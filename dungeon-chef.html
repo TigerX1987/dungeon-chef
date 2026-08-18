@@ -47,7 +47,7 @@ const cv=$('c'), ctx=cv.getContext('2d');
 let W=375,H=812;
 function rsz(){cv.width=W;cv.height=H}
 addEventListener('resize',rsz);rsz();
-$('ld').style.display='none';
+// V96: Keep loading div visible until resources are ready (removed premature hide)
 
 // ---- Images ----
 const IMG_CACHE={};
@@ -221,6 +221,17 @@ const FX={shake:0,flash:null,fa:0};
 const MAX_STR_TEMP=5,MAX_INGS=8,MAX_DISHES=5,MAX_HEAL=30,COOK_PER_TURN=1,EAT_PER_TURN=1,BOSS_DMG_CAP=3;
 const COMBO_NAMES=['','','直击!','二连!','三连击!','四连斩!','五连破!','六连绝杀!','七连修罗!','八连无双!','九连神威!'];
 
+// V96: Cookware system — better gear = wider perfect zone + slower pointer
+const COOKWARE={
+  none:{n:'徒手',desc:'无加成',perfectMin:.4,perfectMax:.6,spdMul:1.0,price:0},
+  rustPan:{n:'锈铁锅',desc:'完美区+5%',perfectMin:.375,perfectMax:.625,spdMul:.95,price:15},
+  ironPot:{n:'铁锅',desc:'完美区+10% 慢10%',perfectMin:.35,perfectMax:.65,spdMul:.90,price:30},
+  copperPot:{n:'铜锅',desc:'完美区+15% 慢15%',perfectMin:.325,perfectMax:.675,spdMul:.85,price:50},
+  steelWok:{n:'精钢炒锅',desc:'完美区+20% 慢20%',perfectMin:.3,perfectMax:.7,spdMul:.80,price:80},
+  mythrilPot:{n:'秘银锅',desc:'完美区+30% 慢30%',perfectMin:.25,perfectMax:.75,spdMul:.70,price:120},
+};
+const COOKWARE_LIST=['rustPan','ironPot','copperPot','steelWok','mythrilPot']; // shop stock tiers
+
 // ---- Game State ----
 const G={
   state:'title',prevState:null,player:null,enemies:[],
@@ -231,6 +242,7 @@ const G={
   bossDefeated:false,bossFed:false,bossWant:null,bossDishKey:null,
   bossFirstKill:false,bossSeasonDropped:[],
   permBuffs:{str:0,hp:0,e:0},hasBossDish:false,
+  cookware:'none', // V96: current cookware
   meta:{seenMobs:[],seenRecipes:[],seenBoss:[],days:0,lastLogin:'',streak:0,titles:[],coins:0,bestFloor:0,burntCount:0},
   settings:{bgm:true},
   combo:0,comboT:0,pet:null,runDeck:SD.slice(),
@@ -245,6 +257,7 @@ const G={
   explored:null, // fog of war
   mapMons:[], // monsters on map
   mapChests:[], // treasure chests
+  mapShops:[], // V96: shop NPCs on map
   joystick:{active:false,sx:0,sy:0,cx:0,cy:0},
   miniZoom:1,
   encounterTimer:0,encounterMon:null,
@@ -264,6 +277,7 @@ function newRun(){
   G.cook=null;G.cookedThisTurn=0;G.cookEatenThisTurn=0;
   G.player.tempStr=0;G.riposteDmg=0;G.fortifyStack=0;
   G.bossSeasonDropped=[];G.hasBossDish=false;G.bossDishKey=null;
+  G.cookware='none'; // V96: reset cookware each run
   enterFloor(0);
 }
 
@@ -384,8 +398,40 @@ function genMap(floorIdx){
   // Fog of war
   const explored=[];
   for(let y=0;y<h;y++){explored[y]=[];for(let x=0;x<w;x++)explored[y][x]=false}
-  
-  return{map:m,w,h,bx,by,mons,chests,explored};
+   
+  // V96: Place a shop NPC at a reachable position far from start
+  const shops=[];
+  if(opens.length>3){
+    let bestShopTile=null,bestShopDist=0;
+    for(const [sx,sy] of opens){
+      const d=Math.sqrt((sx-1.5)**2+(sy-1.5)**2);
+      if(d>bestShopDist&&d>5){bestShopDist=d;bestShopTile=[sx,sy]}
+    }
+    if(bestShopTile){
+      // Pick random ingredients from this floor's pool to sell
+      const shopItems=[];
+      const pool=FLOORS[floorIdx].pool;
+      const uniqueDrops=[...new Set(pool.map(k=>EDEF[k].drop))];
+      for(const dropKey of uniqueDrops){
+        const ing=ING[dropKey];
+        if(ing){
+          const basePrice=ing.r==='rare'?25:ing.r==='uncommon'?12:6;
+          shopItems.push({key:dropKey,price:basePrice+ri(0,3),stock:ri(2,4)});
+        }
+      }
+      // Also sell seasons
+      shopItems.push({key:'salt',price:5,stock:3,isSeason:true});
+      shopItems.push({key:'pepper',price:7,stock:2,isSeason:true});
+      // V96: Sell a random cookware (tier based on floor)
+      const cwTier=Math.min(COOKWARE_LIST.length-1,floorIdx<1?1:floorIdx<3?Math.min(3,floorIdx+1):floorIdx+1);
+      const cwKey=COOKWARE_LIST[Math.min(cwTier,COOKWARE_LIST.length-1)];
+      const cwDef=COOKWARE[cwKey];
+      shopItems.push({key:cwKey,price:cwDef.price,stock:1,isCookware:true});
+      shops.push({x:bestShopTile[0],y:bestShopTile[1],items:shopItems});
+    }
+  }
+   
+  return{map:m,w,h,bx,by,mons,chests,explored,shops};
 }
 
 function enterFloor(floorIdx){
@@ -400,6 +446,7 @@ function enterFloor(floorIdx){
   G.bossDishKey=FLOORS[floorIdx].boss;
   G.bossDefeated=false;G.bossFed=false;G.bossFirstKill=false;G.hasBossDish=false;
   G.px=1.5;G.py=1.5;G.pdir=Math.PI/2; // face south (into corridor depth)
+  G.mapShops=d.shops||[]; // V96: shop NPCs
   G.state='explore';
   revealFog(); // reveal initial area around player
   showMsg('进入 '+FLOORS[floorIdx].n,60); // V41: shorter message
@@ -426,8 +473,8 @@ function renderFP(t,isBattle){
   ctx.imageSmoothingEnabled=true;
   ctx.imageSmoothingQuality='high';
 
-  // V76: Stronger bg darkness for depth
-  ctx.fillStyle='#050805'; // V76: darker (was #080c08)
+  // V94: Dark warm-brown background, not pure black (sewer atmosphere)
+  ctx.fillStyle='#0A0806'; // V94: warm dark brown (was #050805)
   ctx.fillRect(0,0,W,H);
 
   const horizonY=Math.floor(H*0.42);
@@ -535,9 +582,9 @@ function renderFP(t,isBattle){
               g=g*(1-coolShift*0.15);
               b=b+coolShift*12;
             }
-            // V75: More per-tile color variation (7→11 variants) — add darker/wet/blight variants
+            // V95: More per-tile color variation (11→15 variants) — more variety
             const ftileX=Math.floor(wx*2), ftileY=Math.floor(wy*2);
-            const fTint=((ftileX*31+ftileY*17+ftileX*ftileY*7)%11);
+            const fTint=((ftileX*31+ftileY*17+ftileX*ftileY*7+ftileY*ftileY*3)%15);
             if(fTint===0){r*=1.08;g*=1.12;b*=0.92} // brighter green
             else if(fTint===1){r*=0.85;g*=0.90;b*=1.05} // darker bluish
             else if(fTint===2){r*=1.15;g*=1.05;b*=0.80} // warm brown
@@ -548,7 +595,22 @@ function renderFP(t,isBattle){
             else if(fTint===7){r*=1.12;g*=0.98;b*=0.72} // amber light patch
             else if(fTint===8){r*=0.65;g*=0.70;b*=0.65} // deep dark
             else if(fTint===9){r*=1.0;g*=1.08;b*=0.85} // pale moss
-            else{r*=0.92;g*=0.82;b*=0.95} // dusty purple-grey
+            else if(fTint===10){r*=0.92;g*=0.82;b*=0.95} // dusty purple-grey
+            else if(fTint===11){r*=0.78;g*=0.88;b*=0.72} // muddy green
+            else if(fTint===12){r*=1.20;g*=1.10;b*=0.70} // warm sunbeam
+            else if(fTint===13){r*=0.60;g*=0.65;b*=0.72} // deep shadow
+            else{r*=0.95;g*=0.85;b*=1.10} // cold purple tint
+            // V95: Distance-based axial blur — blend adjacent pixels for far floor
+            if(rowDist>5){
+              const blurAmt=Math.min(0.5,(rowDist-5)/15);
+              if(blurAmt>0.05&&rx>0&&rx<rW-1){
+                const prevIdx=(ry*rW+(rx-1))*4;
+                const nextIdx=(ry*rW+(rx+1))*4;
+                r=r*(1-blurAmt)+(pixels[prevIdx]*0.5+pixels[nextIdx]*0.5)*blurAmt;
+                g=g*(1-blurAmt)+(pixels[prevIdx+1]*0.5+pixels[nextIdx+1]*0.5)*blurAmt;
+                b=b*(1-blurAmt)+(pixels[prevIdx+2]*0.5+pixels[nextIdx+2]*0.5)*blurAmt;
+              }
+            }
             // V14: desaturate distant floor
             if(grayMix>0.01){
               const gray=(r+g+b)/3;
@@ -619,20 +681,20 @@ function renderFP(t,isBattle){
           // Perp distance for ceiling (same formula as floor but inverted)
         const rowDist=0.5/(p/H); // V77: perspective projection — near rows are very close, far rows approach horizon
           // V33: Stronger fog and warmth for ceiling
-          const fogFactor=Math.max(0.14, Math.exp(-rowDist*0.16)); // V91: less aggressive falloff (was 0.22)
+          const fogFactor=Math.max(0.20, Math.exp(-rowDist*0.14)); // V94: brighter ceiling, less fog (was 0.14/0.16)
           const warmth=Math.max(0, 1-rowDist/10); // V42: warmth extends further
           const coolT=1-warmth;
           // V92: Cool blue shift for distant ceiling
           const ceilCoolShift=Math.max(0,(rowDist-4)/10);
-          const cBase=1.40*fogFactor; // V91: brighter ceiling (was 1.25)
+          const cBase=1.65*fogFactor; // V94: much brighter ceiling (was 1.40)
           const cWarmR=warmth*40, cWarmG=warmth*18; // V54b: less warm tint (was 65/32)
           const cCoolR=coolT*6, cCoolG=coolT*22, cCoolB=coolT*8; // V54e2: stronger green tint
           // V54b: Reduced brightBoost
           const brightBoost=1.25; // V55: brighter ceiling (was 1.0)
           // V42: Less aggressive horizon fade — min 0.55 instead of 0.30
-          const horizonFade=Math.max(0.70, Math.min(1, p/50)); // V55: brighter near horizon (was 0.55)
+          const horizonFade=Math.max(0.55, Math.min(1, p/60)); // V94: more gradual horizon fade (was 0.70/p/50)
           // V54e: Fog blend - dark green-brown for sewer tone
-          const fogBlendR=22, fogBlendG=28, fogBlendB=20; // V54e: greenish fog (was 30/22/18 brown)
+          const fogBlendR=28, fogBlendG=24, fogBlendB=16; // V94: warm brown fog (was 22,28,20 green)
           const fogAmt=1-horizonFade;
 
           for(let rx=0;rx<crW;rx++){
@@ -668,7 +730,18 @@ function renderFP(t,isBattle){
               let g=texG*(1-ceilCoolShift*0.12)*horizonFade+fogBlendG*fogAmt;
               let b=(texB+ceilCoolShift*10)*horizonFade+fogBlendB*fogAmt;
               // V76: Reduced ceiling micro-noise to eliminate stripe artifacts
-              const cNoise=((rx*83+ry*149+rx*ry*41)%19)/19*5-2.5; // V76: half noise (was 10-5)
+              const cNoise=((rx*83+ry*149+rx*ry*41)%19)/19*5-2.5;
+              // V95: Distance-based axial blur for ceiling (smoother far texture)
+              if(rowDist>4&&rx>0&&rx<crW-1){
+                const cBlur=Math.min(0.35,(rowDist-4)/20);
+                if(cBlur>0.05){
+                  const prevIdx=(ry*crW+(rx-1))*4;
+                  const nextIdx=(ry*crW+(rx+1))*4;
+                  r=r*(1-cBlur)+(cpixels[prevIdx]*0.5+cpixels[nextIdx]*0.5)*cBlur;
+                  g=g*(1-cBlur)+(cpixels[prevIdx+1]*0.5+cpixels[nextIdx+1]*0.5)*cBlur;
+                  b=b*(1-cBlur)+(cpixels[prevIdx+2]*0.5+cpixels[nextIdx+2]*0.5)*cBlur;
+                }
+              }
               cpixels[idx]=Math.max(0,Math.min(255,r+cNoise));
               cpixels[idx+1]=Math.max(0,Math.min(255,g+cNoise));
               cpixels[idx+2]=Math.max(0,Math.min(255,b+cNoise));
@@ -685,6 +758,23 @@ function renderFP(t,isBattle){
         archGrad.addColorStop(0.6,"rgba(12,16,8,0.05)"); // V55: lighter (was 0.10)
         archGrad.addColorStop(1,'rgba(0,0,0,0)');
         ctx.fillStyle=archGrad;ctx.fillRect(0,0,W,horizonY);
+
+        // V95: Random ceiling hanging roots/vines — adds vertical detail to break flat ceiling
+        for(let hi=0;hi<10;hi++){
+          const hSeed=((hi*173+Math.floor(t*0.001)*31)%251);
+          const hDist=1.5+((hSeed*47)%13)*0.5; // distance from player
+          const hAngle=((hSeed*71)%360)/360*fov-fov/2;
+          const hScreenT=(hAngle/fov+0.5);
+          const hSx=lerp(10,W-10,hScreenT);
+          const hScale=Math.max(0.05,1/(hDist*0.5+0.2));
+          const hLen=horizonY*(0.05+((hSeed*23)%7)*0.03)*hScale;
+          const hTop=Math.min(horizonY-10,((hSeed*13)%(horizonY*0.3)));
+          if(hTop+hLen>=horizonY)continue;
+          ctx.fillStyle=`rgba(40,30,20,${0.08+0.04*((hSeed*17)%5)*hScale})`;
+          ctx.fillRect(hSx,hTop,Math.max(0.5,2*hScale),hLen);
+          // Tip
+          ctx.fillRect(hSx-1*hScale,hTop+hLen-1*hScale,4*hScale,2*hScale);
+        }
       }
     }else{
       // V54e: Sewer fallback - green-brown tones
@@ -763,25 +853,33 @@ function renderFP(t,isBattle){
         screenX, wallTop, colW+0.5, wallBot-wallTop+1
       );
 
-      // V92: Per-wall color tint — 16 variants for stronger non-repetition
-      const tileTint=(hitWX*13+hitWY*29+hitWX*hitWY*7+hitWX*hitWY*hitWX*3)%16;
+      // V95: Per-wall color tint — 24 variants for much stronger non-repetition (was 16)
+      const tileTint=(hitWX*13+hitWY*29+hitWX*hitWY*7+hitWX*hitWY*hitWX*3+hitWY*hitWY*5)%24;
       const tintColors=[
-        'rgba(35,20,8,0.15)',   // warm brown
-        'rgba(5,12,8,0.14)',    // dark green
-        'rgba(2,4,3,0.17)',     // dark shadow
-        'rgba(48,24,10,0.14)',  // extra warm
-        'rgba(6,8,16,0.15)',    // wet blue-grey
-        'rgba(42,22,8,0.14)',   // warm brown 2
-        'rgba(8,18,10,0.16)',   // moss green
-        'rgba(25,10,4,0.15)',   // rust orange
-        'rgba(12,6,18,0.13)',   // dark purple-grey
-        'rgba(30,28,8,0.12)',   // dusty olive
-        'rgba(4,12,14,0.16)',   // cold wet blue
-        'rgba(38,16,12,0.13)',  // dark red-brown
-        'rgba(10,22,10,0.15)',  // deep forest green
-        'rgba(20,10,4,0.18)',   // deep amber shadow
-        'rgba(6,14,18,0.14)',   // cold stone blue
-        'rgba(28,20,6,0.12)',   // pale straw
+        'rgba(35,20,8,0.15)',   // 0 warm brown
+        'rgba(5,12,8,0.14)',    // 1 dark green
+        'rgba(2,4,3,0.17)',     // 2 dark shadow
+        'rgba(48,24,10,0.14)',  // 3 extra warm
+        'rgba(6,8,16,0.15)',    // 4 wet blue-grey
+        'rgba(42,22,8,0.14)',   // 5 warm brown 2
+        'rgba(8,18,10,0.16)',   // 6 moss green
+        'rgba(25,10,4,0.15)',   // 7 rust orange
+        'rgba(12,6,18,0.13)',   // 8 dark purple-grey
+        'rgba(30,28,8,0.12)',   // 9 dusty olive
+        'rgba(4,12,14,0.16)',   // 10 cold wet blue
+        'rgba(38,16,12,0.13)',  // 11 dark red-brown
+        'rgba(10,22,10,0.15)',  // 12 deep forest green
+        'rgba(20,10,4,0.18)',   // 13 deep amber shadow
+        'rgba(6,14,18,0.14)',   // 14 cold stone blue
+        'rgba(28,20,6,0.12)',   // 15 pale straw
+        'rgba(45,30,12,0.11)',  // 16 warm clay
+        'rgba(3,8,12,0.18)',    // 17 deep wet
+        'rgba(50,35,15,0.10)',  // 18 light amber
+        'rgba(15,25,8,0.14)',   // 19 swamp green
+        'rgba(8,5,12,0.16)',    // 20 dark charcoal
+        'rgba(35,15,25,0.12)',  // 21 wine stain
+        'rgba(55,40,20,0.09)',  // 22 warm limestone
+        'rgba(10,16,22,0.13)',  // 23 slate blue
       ];
       ctx.fillStyle=tintColors[tileTint];
       ctx.fillRect(screenX,wallTop,colW,wallBot-wallTop);
@@ -901,8 +999,40 @@ function renderFP(t,isBattle){
       const sH=wPx*(0.30+sHash*0.20);
       ctx.fillRect(sX,wBot-sH,colW*4,sH);
     }
+    // V95: Random wall scratch/crack lines to break up flat texture at mid-height
+    const crackHash=Math.abs((Math.sin(seed2*91.371)*37185.4532)%1);
+    if(crackHash>0.65&&z<5&&dim2>0.5){
+      const crackAlpha=0.08+0.06*crackHash;
+      const crackH=wPx*(0.15+0.15*crackHash);
+      const crackY=wTop+wPx*(0.3+0.3*crackHash);
+      ctx.strokeStyle=`rgba(8,6,4,${crackAlpha*dim2})`;
+      ctx.lineWidth=Math.max(0.3,colW*0.2);
+      ctx.beginPath();
+      ctx.moveTo(sX,crackY);
+      ctx.lineTo(sX+colW*3,crackY+crackH);
+      ctx.lineTo(sX+colW*5,crackY-crackH*0.3);
+      ctx.stroke();
+    }
   }
   } // close hasTex block for post-wall overlays
+
+  // V94: Ceiling-wall seam shadow — soft dark gradient at horizon line for smooth transition
+  const seamGrad=ctx.createLinearGradient(0,horizonY-12,0,horizonY+12);
+  seamGrad.addColorStop(0,'rgba(0,0,0,0)');
+  seamGrad.addColorStop(0.4,'rgba(0,0,0,0.15)');
+  seamGrad.addColorStop(0.5,'rgba(0,0,0,0.25)');
+  seamGrad.addColorStop(0.6,'rgba(0,0,0,0.15)');
+  seamGrad.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=seamGrad;
+  ctx.fillRect(0,horizonY-12,W,24);
+
+  // V94: Floor-wall base shadow — dark gradient at floor/wall junction
+  const baseShadow=ctx.createLinearGradient(0,horizonY,0,horizonY+30);
+  baseShadow.addColorStop(0,'rgba(0,0,0,0.20)');
+  baseShadow.addColorStop(0.5,'rgba(0,0,0,0.08)');
+  baseShadow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=baseShadow;
+  ctx.fillRect(0,horizonY,W,30);
 
   // ================================================================
   // 4. LIGHTING — player torch glow + wall torch glows
@@ -934,38 +1064,38 @@ function renderFP(t,isBattle){
     const glowR=140*tscale*Math.max(0.5,flick); // V55: bigger glow (was 120)
 
     const tgL=ctx.createRadialGradient(txLeft,ty,0,txLeft,ty,glowR);
-    tgL.addColorStop(0,`rgba(200,160,65,${0.16*tscale*flick})`); // V55: brighter (was 0.10)
-    tgL.addColorStop(.08,`rgba(190,130,50,${0.12*tscale*flick})`); // V55: brighter (was 0.07)
-    tgL.addColorStop(.20,`rgba(150,70,25,${0.07*tscale*flick})`); // V55: brighter (was 0.04)
-    tgL.addColorStop(.40,`rgba(100,40,15,${0.04*tscale*flick})`); // V55: brighter (was 0.02)
-    tgL.addColorStop(.65,`rgba(55,20,8,${0.02*tscale*flick})`); // V55: brighter (was 0.01);
+    tgL.addColorStop(0,`rgba(220,170,70,${0.25*tscale*flick})`); // V94: much brighter (was 0.16)
+    tgL.addColorStop(.08,`rgba(210,145,55,${0.18*tscale*flick})`); // V94: brighter (was 0.12)
+    tgL.addColorStop(.20,`rgba(170,85,30,${0.12*tscale*flick})`); // V94: brighter (was 0.07)
+    tgL.addColorStop(.40,`rgba(120,50,18,${0.07*tscale*flick})`); // V94: brighter (was 0.04)
+    tgL.addColorStop(.65,`rgba(70,28,10,${0.04*tscale*flick})`); // V94: brighter (was 0.02)
     tgL.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=tgL;ctx.fillRect(txLeft-glowR,ty-glowR,glowR*2,glowR*2);
 
     const tgR=ctx.createRadialGradient(txRight,ty,0,txRight,ty,glowR);
-    tgR.addColorStop(0,`rgba(200,160,65,${0.16*tscale*flick})`); // V55: brighter (was 0.10)
-    tgR.addColorStop(.08,`rgba(190,130,50,${0.12*tscale*flick})`); // V55: brighter (was 0.07)
-    tgR.addColorStop(.20,`rgba(150,70,25,${0.07*tscale*flick})`); // V55: brighter (was 0.04)
-    tgR.addColorStop(.40,`rgba(100,40,15,${0.04*tscale*flick})`); // V55: brighter (was 0.02)
-    tgR.addColorStop(.65,`rgba(55,20,8,${0.02*tscale*flick})`); // V55: brighter (was 0.01);
+    tgR.addColorStop(0,`rgba(220,170,70,${0.25*tscale*flick})`); // V94: much brighter (was 0.16)
+    tgR.addColorStop(.08,`rgba(210,145,55,${0.18*tscale*flick})`); // V94: brighter
+    tgR.addColorStop(.20,`rgba(170,85,30,${0.12*tscale*flick})`); // V94: brighter
+    tgR.addColorStop(.40,`rgba(120,50,18,${0.07*tscale*flick})`); // V94: brighter
+    tgR.addColorStop(.65,`rgba(70,28,10,${0.04*tscale*flick})`); // V94: brighter
     tgR.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=tgR;ctx.fillRect(txRight-glowR,ty-glowR,glowR*2,glowR*2);
     
-    // V54b: Reduced wall light patch to prevent brightness blowout
-    const wallPatchAlpha=0.14*tscale*flick; // V55: brighter (was 0.08)
-    const wallPatch=ctx.createRadialGradient(txLeft,ty,0,txLeft,ty,glowR*0.8);
-    wallPatch.addColorStop(0,`rgba(180,140,55,${wallPatchAlpha})`); // V54g: dim warm
-    wallPatch.addColorStop(0.3,`rgba(160,100,35,${wallPatchAlpha*0.6})`);
-    wallPatch.addColorStop(0.6,`rgba(180,80,30,${wallPatchAlpha*0.25})`);
+    // V94: Stronger wall light patch — torches illuminate walls
+    const wallPatchAlpha=0.22*tscale*flick; // V94: much brighter (was 0.14)
+    const wallPatch=ctx.createRadialGradient(txLeft,ty,0,txLeft,ty,glowR*1.0); // V94: wider (was 0.8)
+    wallPatch.addColorStop(0,`rgba(200,155,60,${wallPatchAlpha})`); // V94: brighter
+    wallPatch.addColorStop(0.3,`rgba(180,110,40,${wallPatchAlpha*0.6})`);
+    wallPatch.addColorStop(0.6,`rgba(160,75,25,${wallPatchAlpha*0.3})`);
     wallPatch.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=wallPatch;ctx.fillRect(txLeft-glowR*0.8,ty-glowR*0.8,glowR*1.6,glowR*1.6);
+    ctx.fillStyle=wallPatch;ctx.fillRect(txLeft-glowR*1.0,ty-glowR*1.0,glowR*2.0,glowR*2.0);
     
-    const wallPatchR=ctx.createRadialGradient(txRight,ty,0,txRight,ty,glowR*0.8);
-    wallPatchR.addColorStop(0,`rgba(180,140,55,${wallPatchAlpha})`); // V54g: dim warm
-    wallPatchR.addColorStop(0.3,`rgba(160,100,35,${wallPatchAlpha*0.6})`);
-    wallPatchR.addColorStop(0.6,`rgba(180,80,30,${wallPatchAlpha*0.25})`);
+    const wallPatchR=ctx.createRadialGradient(txRight,ty,0,txRight,ty,glowR*1.0);
+    wallPatchR.addColorStop(0,`rgba(200,155,60,${wallPatchAlpha})`); // V94: brighter
+    wallPatchR.addColorStop(0.3,`rgba(180,110,40,${wallPatchAlpha*0.6})`);
+    wallPatchR.addColorStop(0.6,`rgba(160,75,25,${wallPatchAlpha*0.3})`);
     wallPatchR.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=wallPatchR;ctx.fillRect(txRight-glowR*0.8,ty-glowR*0.8,glowR*1.6,glowR*1.6);
+    ctx.fillStyle=wallPatchR;ctx.fillRect(txRight-glowR*1.0,ty-glowR*1.0,glowR*2.0,glowR*2.0);
   }
   ctx.restore();
 
@@ -1131,27 +1261,27 @@ function renderFP(t,isBattle){
     } // end if(showRight)
   } // end for(td)
 
-  // V54e: Sewer fog - green-brown tints
+  // V94: Sewer fog - warm brown-green tones (not cold blue)
   const fogGrad=ctx.createLinearGradient(0,horizonY-140,0,horizonY+180);
-  fogGrad.addColorStop(0,'rgba(14,20,14,0)');
-  fogGrad.addColorStop(0.15,'rgba(20,28,18,0.08)');
-  fogGrad.addColorStop(0.30,'rgba(28,35,22,0.15)');
-  fogGrad.addColorStop(0.45,'rgba(35,40,25,0.22)');
-  fogGrad.addColorStop(0.55,'rgba(38,42,28,0.25)');
-  fogGrad.addColorStop(0.70,'rgba(30,35,22,0.18)');
-  fogGrad.addColorStop(0.85,'rgba(20,25,18,0.08)');
-  fogGrad.addColorStop(1,'rgba(14,18,14,0)');
+  fogGrad.addColorStop(0,'rgba(12,10,6,0)'); // V94: warm (was 14,20,14)
+  fogGrad.addColorStop(0.15,'rgba(18,14,8,0.08)');
+  fogGrad.addColorStop(0.30,'rgba(24,18,12,0.15)');
+  fogGrad.addColorStop(0.45,'rgba(30,22,14,0.22)');
+  fogGrad.addColorStop(0.55,'rgba(32,24,16,0.25)');
+  fogGrad.addColorStop(0.70,'rgba(26,20,12,0.18)');
+  fogGrad.addColorStop(0.85,'rgba(18,14,8,0.08)');
+  fogGrad.addColorStop(1,'rgba(12,10,6,0)');
   ctx.fillStyle=fogGrad;
   ctx.fillRect(0,horizonY-140,W,320);
-  // V54e: Sewer horizon glow - greenish-brown
+  // V94: Sewer horizon glow - warm amber-brown
   const hzFog=ctx.createLinearGradient(0,horizonY-60,0,horizonY+90);
-  hzFog.addColorStop(0,'rgba(28,35,22,0)');
-  hzFog.addColorStop(0.15,'rgba(38,45,25,0.10)');
-  hzFog.addColorStop(0.35,'rgba(48,52,30,0.18)');
-  hzFog.addColorStop(0.50,'rgba(55,55,35,0.22)');
-  hzFog.addColorStop(0.65,'rgba(40,42,25,0.15)');
-  hzFog.addColorStop(0.80,'rgba(22,25,18,0.06)');
-  hzFog.addColorStop(1,'rgba(14,18,14,0)');
+  hzFog.addColorStop(0,'rgba(24,18,12,0)'); // V94: warm (was 28,35,22)
+  hzFog.addColorStop(0.15,'rgba(34,24,16,0.10)');
+  hzFog.addColorStop(0.35,'rgba(42,30,18,0.18)');
+  hzFog.addColorStop(0.50,'rgba(48,34,20,0.22)');
+  hzFog.addColorStop(0.65,'rgba(36,26,16,0.15)');
+  hzFog.addColorStop(0.80,'rgba(20,16,10,0.06)');
+  hzFog.addColorStop(1,'rgba(12,10,6,0)');
   ctx.fillStyle=hzFog;
   ctx.fillRect(0,horizonY-60,W,150);
 
@@ -1180,14 +1310,14 @@ function renderFP(t,isBattle){
 
   // [V54m: hand shapes moved to after vignette — see below]
 
-  // V91: Far fog — more gradual falloff with atmospheric perspective (cooler tint)
+  // V94: Far fog — 3-stage gradient, warm brown-green not pure black
   const farFog=ctx.createLinearGradient(0,horizonY-80,0,horizonY+150);
-  farFog.addColorStop(0,'rgba(10,14,18,0.65)'); // V91: less opaque (was 0.78), blue-grey for atmospheric perspective
-  farFog.addColorStop(0.08,'rgba(8,12,16,0.48)');
-  farFog.addColorStop(0.20,'rgba(6,10,14,0.32)'); // V91: more gradual
-  farFog.addColorStop(0.35,'rgba(4,8,10,0.20)');
-  farFog.addColorStop(0.55,'rgba(3,6,8,0.12)');
-  farFog.addColorStop(0.80,'rgba(2,4,4,0.05)');
+  farFog.addColorStop(0,'rgba(12,10,6,0.55)'); // V94: warmer brown (was blue-grey 10,14,18,0.65)
+  farFog.addColorStop(0.08,'rgba(10,9,6,0.42)');
+  farFog.addColorStop(0.20,'rgba(8,8,5,0.28)'); // V94: gradual
+  farFog.addColorStop(0.35,'rgba(6,6,4,0.18)');
+  farFog.addColorStop(0.55,'rgba(5,5,3,0.10)');
+  farFog.addColorStop(0.80,'rgba(4,4,3,0.04)');
   farFog.addColorStop(1,'rgba(0,0,0,0)');
   ctx.fillStyle=farFog;
   ctx.fillRect(0,horizonY-80,W,230);
@@ -1687,6 +1817,19 @@ function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
     if(Math.abs(na)>fov/2+0.3)continue;
     ents.push({type:'chest',x:cx2,y:cy2,dist,angle:na,scaleX:Math.cos(na)});
   }
+  // V96: Shop NPCs
+  for(const sh of G.mapShops){
+    const sx2=Math.floor(sh.x),sy2=Math.floor(sh.y);
+    if(!G.explored[sy2]||!G.explored[sy2][sx2])continue;
+    const cx2=sh.x+0.5,cy2=sh.y+0.5;
+    const dx=cx2-G.px,dy=cy2-G.py;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist>maxDist)continue;
+    const angle=Math.atan2(dy,dx)-dir;
+    let na=angle;while(na>Math.PI)na-=Math.PI*2;while(na<-Math.PI)na+=Math.PI*2;
+    if(Math.abs(na)>fov/2+0.3)continue;
+    ents.push({type:'shop',x:cx2,y:cy2,dist,angle:na,scaleX:Math.cos(na)});
+  }
   // Boss
   if(!G.bossFed){
     const bx=G.mapW-2+0.5,by=G.mapH-2+0.5;
@@ -1816,6 +1959,25 @@ function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
       if(e.dist<5){
         dt(ed?ed.n:'Boss',sx,bY-bsz*0.05,12*scale+4,G.bossDefeated?'#fa0':'#f44','center','bold');
       }
+    }else if(e.type==='shop'){
+      // V96: Shop NPC — a hooded merchant with a glowing lantern
+      const shY=horizonY-sz*0.4+bob;
+      ctx.globalAlpha=0.6+dim*0.4;
+      // Body — hooded figure
+      ctx.fillStyle='#3a2a4a';
+      ctx.beginPath();ctx.ellipse(sx,shY+sz*0.3,sz*0.25,sz*0.35,0,0,Math.PI*2);ctx.fill();
+      // Head/hood
+      ctx.fillStyle='#4a3a5a';
+      ctx.beginPath();ctx.arc(sx,shY+sz*0.05,sz*0.18,0,Math.PI*2);ctx.fill();
+      // Lantern glow
+      ctx.save();ctx.globalCompositeOperation='lighter';
+      const lG=ctx.createRadialGradient(sx+sz*0.2,shY+sz*0.2,0,sx+sz*0.2,shY+sz*0.2,sz*0.5);
+      lG.addColorStop(0,`rgba(120,180,255,${0.4*dim})`);
+      lG.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=lG;ctx.fillRect(sx-sz*0.3,shY-sz*0.1,sz*0.8,sz*0.6);
+      ctx.restore();
+      ctx.globalAlpha=1;
+      if(e.dist<4)dt('商人',sx,shY-sz*0.1,9*scale+5,'#8cf','center','bold');
     }
   }
 }
@@ -1895,7 +2057,27 @@ function revealFog(){
 
 function updateMapMons(dt){
   if(G.state!=='explore')return;
+  // V96: Respawn dead monsters after 30 seconds
+  const now=Date.now();
   for(const m of G.mapMons){
+    if(!m.alive&&m.deadTime){
+      if(now-m.deadTime>30000){ // 30s respawn
+        m.alive=true;m.deadTime=null;
+        // Respawn at a random open position far from player
+        const opens=[];
+        for(let y=0;y<G.mapH;y++)for(let x=0;x<G.mapW;x++){
+          if(G.map[y][x]===0){
+            const d=Math.sqrt((x+0.5-G.px)**2+(y+0.5-G.py)**2);
+            if(d>5)opens.push([x,y]);
+          }
+        }
+        if(opens.length>0){
+          const[op]=opens[ri(0,opens.length-1)];
+          m.x=op[0]+0.5;m.y=op[1]+0.5;
+          m.dir=rand(0,Math.PI*2);
+        }
+      }
+    }
     if(!m.alive)continue;
     // Wander randomly
     m.dir+=rand(-0.5,0.5)*dt;
@@ -1951,6 +2133,15 @@ function checkEncounters(){
       return;
     }
   }
+  // V96: Shop NPC encounter
+  for(const sh of G.mapShops){
+    const dx=sh.x+0.5-G.px,dy=sh.y+0.5-G.py;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    if(d<1.0){
+      G.state='shop';S.bell();showMsg('欢迎光临地下商城!',60);
+      return;
+    }
+  }
   // Boss encounter
   if(!G.bossFed){
     const bx=G.mapW-2+0.5,by=G.mapH-2+0.5;
@@ -1985,6 +2176,7 @@ function checkChests(){
 
 function startEncounter(m){
   m.alive=false;
+  m.deadTime=Date.now(); // V96: Record death time for respawn
   S.combat();
   const ed=EDEF[m.key];
   G.enemies=[mkEnemy(m.key,G.floor)];
@@ -1998,9 +2190,11 @@ function startEncounter(m){
 }
 
 function startBossEncounter(){
+  // V96: If boss has been fed and next floor unlocked, go to next floor
   if(G.bossFed){enterFloor(G.floor+1);return}
+  // V96: If boss defeated but not yet fed, show boss ask (cook dish to unlock next floor)
   if(G.bossDefeated){
-    G.state='bossAsk';showMsg('再次挑战 '+EDEF[G.bossDishKey].n+'?',60);return;
+    G.state='bossAsk';showMsg('给 '+EDEF[G.bossDishKey].n+' 做菜!',60);return;
   }
   const ed=EDEF[G.bossDishKey];
   G.enemies=[mkEnemy(G.bossDishKey,G.floor)];G.lastBossKey=G.bossDishKey;
@@ -2056,17 +2250,20 @@ function dmgEnemy(e,amt,baseAtk){
   if(e.enrage&&!e.enraged){e.hitCount++;if(e.hitCount>=e.enrage){e.enraged=true;e.baseA=Math.floor(e.baseA*1.5);e.intent=e.baseA;fT(W/2,H*.2,'狂暴!','#f00',24)}}
   if(e.hp<=0){e.dead=true;e.hp=0;S.kill();pS(W/2,H*.35,'#fa0',16);if(!G.meta.seenMobs.includes(e.key))G.meta.seenMobs.push(e.key);onKill(e)}
 }
-
 function onKill(e){
   if(e.drop){G.ings.push(e.drop);showMsg('掉落: '+ING[e.drop].n,60)}
   if(!e.boss&&Math.random()<.25){const s=pick(Object.keys(SEASONS));G.seasons.push(s);showMsg('调味料: '+SEASONS[s].n,60)}
-  G.player.gold+=e.boss?30:5;
+  // V96: Gold drop — normal 5-10, boss capped at 40
+  const goldAmt=e.boss?ri(20,40):ri(5,10);
+  G.player.gold+=goldAmt;
+  showMsg((e.boss?'Boss':'')+'掉落 '+goldAmt+' 金币',60);
   if(e.boss){
     G.bossDefeated=true;G.lastWasBoss=true;G.lastBossKey=e.key;
     if(!G.meta.seenBoss.includes(e.key))G.meta.seenBoss.push(e.key);
     S.bell();if(!G.meta.seenRecipes.includes(e.drop))G.meta.seenRecipes.push(e.drop);save();
   }
-  setTimeout(()=>{G.enemies=G.enemies.filter(en=>!en.dead);if(G.enemies.length===0&&G.state==='battle')onClear(G.lastWasBoss);G.lastWasBoss=false},600);
+  // V96: Reduced delay from 600ms to 300ms for snappier combat end
+  setTimeout(()=>{G.enemies=G.enemies.filter(en=>!en.dead);if(G.enemies.length===0&&G.state==='battle')onClear(G.lastWasBoss);G.lastWasBoss=false},300);
 }
 
 function onClear(wasBoss){
@@ -2118,7 +2315,8 @@ function enemyAct(){
       G.turn='p';G.player.energy=G.player.maxE;G.player.block=0;
       if(G.fortifyStack>0)G.player.block+=G.fortifyStack;
       drawHand(5);G.player.tempStr=0;G.cookedThisTurn=0;G.cookEatenThisTurn=0;
-      if(G.pet){G.pet.hungerTimer=(G.pet.hungerTimer||0)+1;if(G.pet.hungerTimer>=3){G.pet.hunger--;G.pet.hungerTimer=0;if(G.pet.hunger<=0){G.pet=null;save()}}}
+      // V96: Pet hunger increases each combat turn, leaves at max
+      if(G.pet){G.pet.hunger++;if(G.pet.hunger>=G.pet.maxHunger){fT(W/2,H*.5,G.pet.n+'饿了,离开了!','#f44',18);G.pet=null;save()}}
     }
     _etGuard=false;
   },G.enemies.length*600+200);
@@ -2127,9 +2325,9 @@ function enemyAct(){
 // ================================================================
 //  PET
 // ================================================================
-function tryRecruit(){if(!G.lastBossKey)return;const e=EDEF[G.lastBossKey];G.pet={key:G.lastBossKey,n:e.n,hp:Math.floor(e.hp*.3),maxHp:Math.floor(e.hp*.3),a:Math.floor(e.a*.4),hunger:5,hungerTimer:0,decayTimer:0,ico:e.ico,col:e.col};S.pet();save()}
+function tryRecruit(){if(!G.lastBossKey)return;const e=EDEF[G.lastBossKey];G.pet={key:G.lastBossKey,n:e.n,hp:Math.floor(e.hp*.3),maxHp:Math.floor(e.hp*.3),a:Math.floor(e.a*.4),hunger:0,maxHunger:5,ico:e.ico,col:e.col};S.pet();save()}
 function petAttack(){if(!G.pet||G.pet.hp<=0)return;const alive=G.enemies.filter(e=>!e.dead);if(alive.length===0)return;const tgt=pick(alive);if(Math.random()<0.6){dmgEnemy(tgt,G.pet.a+Math.floor(G.player.str*.5));fT(W*.7,H*.55,G.pet.n+' 攻击!','#fa0',14)}}
-function feedPet(){if(!G.pet)return;if(G.dishes.length===0)return;const d=G.dishes.shift();G.pet.hunger=Math.min(5,G.pet.hunger+2);G.pet.hp=Math.min(G.pet.maxHp,G.pet.hp+Math.floor(d.h*.5));S.eat()}
+function feedPet(){if(!G.pet)return;if(G.dishes.length===0)return;const d=G.dishes.shift();G.pet.hunger=Math.max(0,G.pet.hunger-2);G.pet.hp=Math.min(G.pet.maxHp,G.pet.hp+Math.floor(d.h*.5));S.eat();if(G.pet.hunger<=0)showMsg(G.pet.n+'吃饱了!',60)}
 
 // ================================================================
 //  COOKING
@@ -2138,14 +2336,16 @@ function startCook(){
   if(G.ings.length===0){showMsg('没有食材!',60);return}
   if(G.state==='battle'&&(G.cookedThisTurn||0)>=COOK_PER_TURN){showMsg('本轮已烹饪!',60);return}
   if(G.dishes.length>=MAX_DISHES){showMsg('菜品已满!',60);return}
-  G.cook={ingIdx:null,ptr:0,dir:1,spd:0.008+G.floor*.0014,started:false,ready:false,seasonSel:-1};
+  const cw=COOKWARE[G.cookware]||COOKWARE.none; // V96: cookware affects speed
+  G.cook={ingIdx:null,ptr:0,dir:1,spd:(0.008+G.floor*.0014)*cw.spdMul,started:false,ready:false,seasonSel:-1};
   G.prevState=G.state;G.state='cook';G.sel=-1;
 }
-function selIng(i){if(!G.cook)return;G.cook.ingIdx=i;G.cook.started=false;G.cook.ptr=0;G.cook.dir=1;G.cook.spd=0.008+G.floor*.0014;G.cook.seasonSel=-1;S.clk()}
+function selIng(i){if(!G.cook)return;G.cook.ingIdx=i;G.cook.started=false;G.cook.ptr=0;G.cook.dir=1;const cw=COOKWARE[G.cookware]||COOKWARE.none;G.cook.spd=(0.008+G.floor*.0014)*cw.spdMul;G.cook.seasonSel=-1;S.clk()}
 function finishCook(){
   if(!G.cook||G.cook.ingIdx===null)return;
   const p=G.cook.ptr;let q;
-  if(p<.2||p>.8){q='burn';S.cookB()}else if(p<.4||p>.6){q='good';S.cookG()}else{q='perfect';S.cookP()}
+  const cw=COOKWARE[G.cookware]||COOKWARE.none; // V96: cookware widens perfect zone
+  if(p<cw.perfectMin||p>cw.perfectMax){q='burn';S.cookB()}else if(p<cw.perfectMin+.1||p>cw.perfectMax-.1){q='good';S.cookG()}else{q='perfect';S.cookP()}
   const ingId=G.ings[G.cook.ingIdx];const ing=ING[ingId];const dish={...ing.dish,quality:q,ingId};
   if(q==='perfect')dish.h=Math.floor(dish.h*2);else if(q==='burn')dish.h=Math.floor(dish.h*.4);
   if(G.cook.seasonSel>=0&&G.cook.seasonSel<G.seasons.length){
@@ -2193,6 +2393,7 @@ function render(t){
     case'bossStory':rBossStory(t);break;
     case'bossAsk':rBossAsk(t);break;
     case'bossFeed':rBossFeed(t);break;
+    case'shop':rShop(t);break; // V96: shop UI
     case'codex':rCodex(t);break;
     case'dead':rDead(t);break;
     case'win':rWin(t);break;
@@ -2281,12 +2482,13 @@ function rExplore(t){
 // V61: Hands using AI-generated sprites with dynamic flame overlay
 function drawHands(t,battle){
   // V92: Offscreen canvas for hand lighting — source-atop only affects hand pixels
-  const sc=battle?0.55:1.3;
+  // V94: Smaller hands (was 1.3), better position
+  const sc=battle?0.50:1.05; // V94: smaller (was 0.55/1.3)
   const handBob=Math.sin(t*0.008)*2*sc;
   const torchFlame=0.85+Math.sin(t*0.02)*0.15+Math.sin(t*0.05)*0.05;
-  const torchX=battle?W*0.12:W*0.16;
-  const wpnX=battle?W*0.88:W*0.86;
-  const handY=battle?H*0.95:H*0.92;
+  const torchX=battle?W*0.14:W*0.18; // V94: slightly inward
+  const wpnX=battle?W*0.86:W*0.84; // V94: slightly inward
+  const handY=battle?H*0.95:H*0.90; // V94: slightly higher
 
   // V92: Create/reuse offscreen canvas for hand compositing
   if(!window._handCV||window._handCV.width!==W||window._handCV.height!==H){
@@ -2299,7 +2501,7 @@ function drawHands(t,battle){
   // ===== LEFT HAND: torch =====
   if(_handTorch.complete&&_handTorch.naturalWidth>0){
     const iw=_handTorch.naturalWidth, ih=_handTorch.naturalHeight;
-    const dw2=W*(battle?0.12:0.30);
+    const dw2=W*(battle?0.10:0.25); // V94: smaller hands (was 0.12/0.30)
     const dh2=dw2*(ih/iw);
     const dx=torchX-dw2/2;
     const dy=handY+handBob-dh2+dh2*0.08;
@@ -2325,13 +2527,13 @@ function drawHands(t,battle){
           const dxl=wx-lightCx, dyl=wy-lightCy;
           const dist2=dxl*dxl+dyl*dyl;
           const t=Math.min(1,Math.sqrt(dist2/lr2)); // 0 near, 1 far
-          // V92d: Near = bright warm (multiply by warm tint), far = darken
-          const warmR=1.0-t*0.50, warmG=1.0-t*0.65, warmB=1.0-t*0.85;
-          const bright=1.0-t*0.35;
-          // V92e: Strong warm glow near flame
-          const addR=(1-t)*80*torchFlame+20*torchFlame;
-          const addG=(1-t)*40*torchFlame+8*torchFlame;
-          const addB=(1-t)*5*torchFlame;
+          // V94: Stronger warm light near flame — more dramatic lighting
+          const warmR=1.0-t*0.40, warmG=1.0-t*0.55, warmB=1.0-t*0.80; // V94: less extreme (was 0.50/0.65/0.85)
+          const bright=1.0-t*0.25; // V94: less darkening (was 0.35)
+          // V94: Stronger warm glow near flame
+          const addR=(1-t)*100*torchFlame+30*torchFlame; // V94: stronger (was 80/20)
+          const addG=(1-t)*55*torchFlame+12*torchFlame; // V94: stronger (was 40/8)
+          const addB=(1-t)*8*torchFlame; // V94: slightly stronger (was 5)
           d[i4]=Math.min(255,d[i4]*warmR*bright+addR);
           d[i4+1]=Math.min(255,d[i4+1]*warmG*bright+addG);
           d[i4+2]=Math.min(255,d[i4+2]*warmB*bright+addB);
@@ -2415,7 +2617,7 @@ function drawHands(t,battle){
   // ===== RIGHT HAND: dagger =====
   if(_handDagger.complete&&_handDagger.naturalWidth>0){
     const iw=_handDagger.naturalWidth, ih=_handDagger.naturalHeight;
-    const dw2=W*(battle?0.12:0.30);
+    const dw2=W*(battle?0.10:0.25); // V94: smaller hands (was 0.12/0.30)
     const dh2=dw2*(ih/iw);
     const dx=wpnX-dw2/2;
     const dy=handY+handBob*0.5-dh2+dh2*0.08;
@@ -2441,13 +2643,13 @@ function drawHands(t,battle){
           const dxl=wx-lightSrcX2, dyl=wy-lightSrcY2;
           const dist2=dxl*dxl+dyl*dyl;
           const t=Math.min(1,Math.sqrt(dist2/lr2D)); // 0 near torch, 1 far
-          // V92f: Near torch = warm orange tint, far = slightly dimmed but still warm
-          const warmR=1.0-t*0.25, warmG=1.0-t*0.50, warmB=1.0-t*0.75;
-          const bright=1.0-t*0.15; // V92f: less darkening so hand stays visible
-          // V92e: Much stronger warm additive light — visible even at distance
-          const addR=(1-t)*80*torchFlame+35*torchFlame;
-          const addG=(1-t)*40*torchFlame+12*torchFlame;
-          const addB=(1-t)*5*torchFlame;
+          // V94: Stronger warm light from torch on right hand
+          const warmR=1.0-t*0.20, warmG=1.0-t*0.42, warmB=1.0-t*0.68; // V94: warmer (was 0.25/0.50/0.75)
+          const bright=1.0-t*0.10; // V94: less darkening (was 0.15)
+          // V94: Much stronger warm additive light
+          const addR=(1-t)*100*torchFlame+45*torchFlame; // V94: stronger (was 80/35)
+          const addG=(1-t)*55*torchFlame+15*torchFlame; // V94: stronger (was 40/12)
+          const addB=(1-t)*8*torchFlame; // V94: slightly stronger (was 5)
           d2[i4]=Math.min(255,d2[i4]*warmR*bright+addR);
           d2[i4+1]=Math.min(255,d2[i4+1]*warmG*bright+addG);
           d2[i4+2]=Math.min(255,d2[i4+2]*warmB*bright+addB);
@@ -2471,6 +2673,13 @@ function drawHands(t,battle){
     ctx.drawImage(hcv,0,0);
     hctx.clearRect(0,0,W,H);
   }
+
+  // V94: Ground shadows under both hands — soft elliptical darkening
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.25)';
+  ctx.beginPath();ctx.ellipse(torchX, handY+8, W*0.08, 4, 0, 0, Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(wpnX, handY+8, W*0.07, 3.5, 0, 0, Math.PI*2);ctx.fill();
+  ctx.restore();
 }
 
 function drawPlayerStatus(){
@@ -2529,7 +2738,7 @@ function drawPlayerStatus(){
   if(G.pet){
     rr(x+2,y+40,w-4,24,6,'rgba(35,20,8,.7)','#a80');
     dt(G.pet.n,x+5,y+51,10,'#fc4','left'); // V80: larger (was 8)
-    dt('HP'+G.pet.hp+' 饱'+G.pet.hunger,x+5,y+61,9,'#bba','left'); // V80: larger (was 7);
+    dt('HP'+G.pet.hp+' 饥饿'+G.pet.hunger+'/'+G.pet.maxHunger,x+5,y+61,9,'#bba','left'); // V96: hunger/max
   }
   
   // Ingredients/Dishes — V75: cute labels, slightly larger
@@ -2578,6 +2787,14 @@ function drawMinimap(t){
   for(const c of G.mapChests){
     if(c.opened||!G.explored[c.y]||!G.explored[c.y][c.x])continue;
     ctx.fillStyle='#fd4';ctx.fillRect(mx2+c.x*ms+1,my2+c.y*ms+1,ms-2,ms-2);
+  }
+  
+  // V96: Shops on minimap
+  for(const sh of G.mapShops){
+    const sx3=Math.floor(sh.x),sy3=Math.floor(sh.y);
+    if(!G.explored[sy3]||!G.explored[sy3][sx3])continue;
+    ctx.fillStyle='#8cf';
+    ctx.beginPath();ctx.arc(mx2+(sh.x+0.5)*ms,my2+(sh.y+0.5)*ms,ms*0.4,0,Math.PI*2);ctx.fill();
   }
   
   // Player (arrow)
@@ -2786,8 +3003,8 @@ function rBattle(t){
       else dt('点击目标',W/2,H*.64,13,'#fa0','center','bold');
     }
   }
-  // V56: Draw hands in battle mode (smaller, to corners, don't block cards)
-  drawHands(t,true);
+  // V96: Hide hands during battle to avoid blocking cards
+  // drawHands(t,true);  // disabled — hands not shown in combat
 }
 
 function drawPlayerBattleBar(){
@@ -2954,16 +3171,23 @@ function rCook(t){
   dt(ing.n+' -> '+ing.dish.n,W/2,80,13,'#fa0','center','bold');
   dt('+'+ing.dish.h+'HP'+(ing.dish.b?(' ('+BUFF_NAMES[ing.dish.b]+')'):''),W/2,98,11,'#aaa');
 
-  // Timing bar — placed below the pot
+  // V96: Timing bar — dynamic zones based on cookware
+  const cw=COOKWARE[G.cookware]||COOKWARE.none;
   const barY=H*0.62,barW=Math.min(280,W-40),barX=(W-barW)/2,barH=22;
   rr(barX,barY,barW,barH,4,'#1a1a1a','#555');
-  ctx.fillStyle='#4a1a1a';ctx.fillRect(barX+1,barY+1,barW*.2-1,barH-2);
-  ctx.fillStyle='#3a3a1a';ctx.fillRect(barX+barW*.2,barY+1,barW*.2,barH-2);
-  ctx.fillStyle='#1a3a1a';ctx.fillRect(barX+barW*.4,barY+1,barW*.2,barH-2);
-  ctx.fillStyle='#3a3a1a';ctx.fillRect(barX+barW*.6,barY+1,barW*.2,barH-2);
-  ctx.fillStyle='#4a1a1a';ctx.fillRect(barX+barW*.8,barY+1,barW*.2-1,barH-2);
-  dt('糊',barX+barW*.1,barY+15,9,'#f66');dt('OK',barX+barW*.3,barY+15,9,'#cc6');
-  dt('完美',barX+barW*.5,barY+15,9,'#6c6');dt('OK',barX+barW*.7,barY+15,9,'#cc6');dt('糊',barX+barW*.9,barY+15,9,'#f66');
+  // Burn zone (outside good range)
+  const burnL=cw.perfectMin-.2, burnR=cw.perfectMax+.2;
+  ctx.fillStyle='#4a1a1a';ctx.fillRect(barX+1,barY+1,barW*(burnL)-1,barH-2);
+  ctx.fillStyle='#4a1a1a';ctx.fillRect(barX+barW*(burnR),barY+1,barW*(1-burnR)-1,barH-2);
+  // Good zones
+  ctx.fillStyle='#3a3a1a';ctx.fillRect(barX+barW*burnL,barY+1,barW*(cw.perfectMin-burnL),barH-2);
+  ctx.fillStyle='#3a3a1a';ctx.fillRect(barX+barW*cw.perfectMax,barY+1,barW*(burnR-cw.perfectMax),barH-2);
+  // Perfect zone (center)
+  ctx.fillStyle='#1a3a1a';ctx.fillRect(barX+barW*cw.perfectMin,barY+1,barW*(cw.perfectMax-cw.perfectMin),barH-2);
+  dt('糊',barX+barW*.1,barY+15,9,'#f66');dt('OK',barX+barW*(burnL+(cw.perfectMin-burnL)/2),barY+15,9,'#cc6');
+  dt('完美',barX+barW*(cw.perfectMin+cw.perfectMax)/2,barY+15,9,'#6c6');dt('OK',barX+barW*(cw.perfectMax+(burnR-cw.perfectMax)/2),barY+15,9,'#cc6');dt('糊',barX+barW*.9,barY+15,9,'#f66');
+  // V96: Show current cookware name
+  dt('厨具: '+cw.n,W/2,barY-12,11,'#fc8','center','bold');
 
   if(!G.cook.started){
     dt('点击开始',W/2,barY+40,14,'#fa0','center','bold');
@@ -3037,12 +3261,19 @@ function rBossAsk(t){
   const bk=G.bossDishKey;const e=EDEF[bk];
   if(e){const img=getImg(e.ico);if(img&&img.complete){ctx.drawImage(img,W/2-55,H*.1,110,110)}}
   dt(e?e.n:'Boss',W/2,H*.3,18,'#fa0','center','bold');
-  dt('准备好菜了吗?',W/2,H*.38,15,'#ccc');
-  if(G.hasBossDish){if(btn(W/2-80,H*.48,160,42,'投喂Boss!','#cfa')&&mc){S.clk();G.state='bossFeed'}}
-  else{dt('(Boss菜还没做好)',W/2,H*.48,12,'#888');
-    dt(canCookBossDish()?'食材足够,去烹饪!':'需要更多食材',W/2,H*.52,11,'#aaa')}
-  if(btn(W-100,H*.48,80,36,'再战','#f44')&&mc){S.clk();startBossEncounter()}
-  if(btn(20,H*.48,80,36,'探索','#888')&&mc){S.clk();G.state='explore'}
+  dt('Boss已被击败!',W/2,H*.38,14,'#cfa');
+  dt('做出它的菜来开启下一层',W/2,H*.42,12,'#aaa');
+  // V96: Show if player has boss dish or can cook it
+  if(G.hasBossDish){
+    if(btn(W/2-80,H*.5,160,42,'投喂Boss!','#cfa')&&mc){S.clk();G.state='bossFeed'}
+  }else{
+    dt(canCookBossDish()?'食材足够,去烹饪!':'需要更多食材',W/2,H*.5,11,canCookBossDish()?'#cfa':'#888');
+    if(canCookBossDish()&&btn(W/2-80,H*.55,160,38,'制作Boss菜','#fa0')&&mc){S.clk();cookBossDish();G.state='bossFeed'}
+  }
+  // V96: Can still go explore to gather more materials
+  if(btn(20,H*.85,90,36,'继续探索','#888')&&mc){S.clk();G.state='explore'}
+  // V96: Can challenge boss again for more drops
+  if(btn(W-110,H*.85,90,36,'再战Boss','#f44')&&mc){S.clk();startBossEncounter()}
 }
 
 function rBossFeed(t){
@@ -3052,13 +3283,73 @@ function rBossFeed(t){
   if(e){const img=getImg(e.ico);if(img&&img.complete){ctx.drawImage(img,W/2-55,H*.1,110,110)}}
   dt(e?e.n:'',W/2,H*.3,18,'#cfa','center','bold');
   dt('Boss对你的料理很满意!',W/2,H*.38,15,'#cfa');
-  if(G.pet){dt('你已经有宠物了',W/2,H*.46,13,'#888');
-    if(btn(W/2-80,H*.6,160,42,'下一层','#cfa')&&mc){S.clk();feedBoss();enterFloor(G.floor+1)}
-  }else{dt('招募Boss为宠物?',W/2,H*.46,16,'#fa0');
-    dt('(宠物会随战斗衰减,记得喂养!)',W/2,H*.51,11,'#888');
-    if(btn(W/2-150,H*.6,140,42,'招募!','#cfa')&&mc){S.clk();tryRecruit();feedBoss();enterFloor(G.floor+1)}
-    if(btn(W/2+10,H*.6,140,42,'直接通过','#888')&&mc){S.clk();feedBoss();enterFloor(G.floor+1)}
+  dt('下一层入口已开启!',W/2,H*.43,13,'#fa0');
+  // V96: Per user design — feed boss to unlock next floor, can stay and grind
+  // First feed: unlock next floor. Second feed (if already has pet): recruit boss companion
+  if(!G.bossFed){
+    // First time feeding — unlock next floor, boss leaves but will wait
+    if(btn(W/2-80,H*.55,160,42,'开启下一层','#cfa')&&mc){S.clk();feedBoss();showMsg('下一层已开启! 可继续探索本层',90);G.state='explore'}
+  }else{
+    // Boss already fed (next floor unlocked). Now can recruit as companion
+    if(G.pet){
+      dt('你已有同伴: '+G.pet.n,W/2,H*.52,12,'#fa0');
+      dt('饥饿度: '+G.pet.hunger+'/'+G.pet.maxHunger,W/2,H*.56,11,'#fc4');
+      if(btn(W/2-80,H*.65,160,42,'前往下一层','#cfa')&&mc){S.clk();enterFloor(G.floor+1)}
+    }else{
+      dt('再次做菜可招募Boss为同伴!',W/2,H*.52,13,'#fa0');
+      dt('(战斗会增加饥饿度,需食物维系)',W/2,H*.56,11,'#888');
+      if(G.hasBossDish){
+        if(btn(W/2-150,H*.65,140,42,'招募Boss!','#cfa')&&mc){S.clk();tryRecruit();feedBoss();enterFloor(G.floor+1)}
+      }else{
+        dt(canCookBossDish()?'食材足够,去烹饪!':'需要食材再做菜',W/2,H*.65,11,canCookBossDish()?'#cfa':'#888');
+        if(canCookBossDish()&&btn(W/2-80,H*.7,160,38,'制作Boss菜','#fa0')&&mc){S.clk();cookBossDish()}
+      }
+      if(btn(W/2+10,H*.65,140,42,'直接通过','#888')&&mc){S.clk();feedBoss();enterFloor(G.floor+1)}
+    }
   }
+  if(btn(20,H*.9,90,32,'留本层','#888')&&mc){S.clk();G.state='explore'}
+}
+
+// ---- Shop (V96) ----
+function rShop(t){
+  const g=ctx.createRadialGradient(W/2,H*.3,0,W/2,H*.3,W);g.addColorStop(0,'#1a1a25');g.addColorStop(1,'#0a060a');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  dt('地下商城',W/2,30,22,'#fc4','center','bold');
+  dt('金币: '+G.player.gold,W/2,54,14,'#fa0');
+  // Find nearest shop
+  const sh=G.mapShops[0];if(!sh){if(btn(W/2-60,H*.5,120,38,'离开','#888')&&mc){S.clk();G.state='explore'}return}
+  let yStart=78;
+  sh.items.forEach((item,i)=>{
+    if(item.stock<=0)return;
+    let name,desc,color;
+    if(item.isCookware){
+      const cw=COOKWARE[item.key];name=cw.n;desc=cw.desc;color='#fc8';
+    }else if(item.isSeason){
+      const sv=SEASONS[item.key];name=sv.n;desc=sv.eff;color='#fc8';
+    }else{
+      const ing=ING[item.key];name=ing.n;desc='+'+ing.dish.h+'HP';color=RARE_COL[ing.r]||'#ccc';
+    }
+    const bought=item._bought||false;
+    const canAfford=G.player.gold>=item.price&&!bought;
+    const iy=yStart+i*52;
+    const hv=hitBtn(20,iy,W-40,46);
+    rr(20,iy,W-40,46,8,hv?'rgba(45,35,20,.9)':'rgba(28,20,14,.85)',bought?'#444':(hv?_uiBdrHi:_uiBdr));
+    dt(name,40,iy+20,13,bought?'#666':color,'left','bold');
+    dt(desc,40,iy+38,10,'#888','left');
+    dt(item.price+'金',W-60,iy+20,12,bought?'#444':(canAfford?'#fa0':'#f44'),'right','bold');
+    dt(bought?'已购':(item.stock>1?'x'+item.stock:''),W-60,iy+38,9,'#666','right');
+    if(hv&&mc&&canAfford&&!bought){
+      S.clk();G.player.gold-=item.price;item._bought=true;item.stock--;
+      if(item.isCookware){
+        G.cookware=item.key;showMsg('装备: '+name+'!',90);
+      }else if(item.isSeason){
+        G.seasons.push(item.key);showMsg('购买: '+name,60);
+      }else{
+        G.ings.push(item.key);showMsg('购买: '+name,60);
+      }
+    }
+  });
+  if(btn(W/2-60,H-56,120,40,'离开商城','#888')&&mc){S.clk();G.state='explore'}
 }
 
 // ---- Codex/Death/Win ----
