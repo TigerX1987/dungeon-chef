@@ -565,8 +565,8 @@ function renderFP(t,isBattle){
       const tileXF=Math.floor(wx*2), tileYF=Math.floor(wy*2);
       const tileOffU=((tileXF*51+tileYF*23)%97)/97*0.7; // V89: wider offset (was 0.5)
       const tileOffV=((tileXF*37+tileYF*61)%89)/89*0.6; // V89: separate V offset (was 0.4)
-      // V89: Per-tile rotation hash — rotate texture sampling by 0/90/180/270 degrees
-      const rotHash=(tileXF*13+tileYF*7)%4;
+      // V89: Per-tile rotation hash — rotate texture sampling by 0/90/180/270 degrees (V98: normalize negative %)
+      const rotHash=(((tileXF*13+tileYF*7)%4)+4)%4;
       let tu, tv;
       const rawU=((wx*texScale+tileOffU));
       const rawV=((wy*texScale*1.3+tileOffV));
@@ -593,7 +593,8 @@ function renderFP(t,isBattle){
             }
             // V97: Tint via lookup table (replaces 15-branch if-else for performance)
             const ftileX=Math.floor(wx*2), ftileY=Math.floor(wy*2);
-            const fTint=((ftileX*31+ftileY*17+ftileX*ftileY*7+ftileY*ftileY*3)%15);
+            // V98 FIX: JS % can be negative for negative coords — negative index into _FLOOR_TINTS = undefined → crash. Normalize to [0,15).
+            const fTint=(((ftileX*31+ftileY*17+ftileX*ftileY*7+ftileY*ftileY*3)%15)+15)%15;
             const tintT=_FLOOR_TINTS[fTint];
             r*=tintT[0];g*=tintT[1];b*=tintT[2];
             // V97: Removed axial blur (too expensive per-pixel) — fog already provides distance softening
@@ -687,8 +688,8 @@ function renderFP(t,isBattle){
           const ctXF=Math.floor(wx*2), ctYF=Math.floor(wy*2);
           const ctOffU=((ctXF*41+ctYF*17)%89)/89*0.7; // V89: wider (was 0.5)
           const ctOffV=((ctXF*29+ctYF*53)%83)/83*0.6; // V89: separate V offset (was 0.4)
-          // V89: Per-tile rotation
-          const crotHash=(ctXF*17+ctYF*11)%4;
+          // V89: Per-tile rotation (V98: normalize negative %)
+          const crotHash=(((ctXF*17+ctYF*11)%4)+4)%4;
           const crawU=(wx*ctexScale+ctOffU);
           const crawV=(wy*ctexScale*1.2+ctOffV);
           const cfracU=((crawU%1)+1)%1;
@@ -824,8 +825,8 @@ function renderFP(t,isBattle){
         screenX, wallTop, colW+0.5, wallBot-wallTop+1
       );
 
-      // V95: Per-wall color tint — 24 variants for much stronger non-repetition (was 16)
-      const tileTint=(hitWX*13+hitWY*29+hitWX*hitWY*7+hitWX*hitWY*hitWX*3+hitWY*hitWY*5)%24;
+      // V95: Per-wall color tint — 24 variants for much stronger non-repetition (V98: normalize negative %)
+      const tileTint=(((hitWX*13+hitWY*29+hitWX*hitWY*7+hitWX*hitWY*hitWX*3+hitWY*hitWY*5)%24)+24)%24;
       const tintColors=[
         'rgba(35,20,8,0.15)',   // 0 warm brown
         'rgba(5,12,8,0.14)',    // 1 dark green
