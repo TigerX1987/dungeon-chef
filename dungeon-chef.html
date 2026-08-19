@@ -253,14 +253,20 @@ function _genTextures(){
 // Generate textures synchronously at startup (takes <100ms)
 _genTextures();
 
-// ---- Input ----
+// ---- Input (V100: fix coordinate mapping — canvas CSS size != internal size) ----
 let mx=0,my=0,mc=false;
 const keys={};
-cv.addEventListener('mousedown',e=>{mx=e.clientX;my=e.clientY;mc=true;AC()});
-cv.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY});
+function _mapXY(e){
+  const r=cv.getBoundingClientRect();
+  // Scale from CSS viewport coords to canvas internal coords
+  mx=(e.clientX-r.left)*(cv.width/r.width);
+  my=(e.clientY-r.top)*(cv.height/r.height);
+}
+cv.addEventListener('mousedown',e=>{_mapXY(e);mc=true;AC()});
+cv.addEventListener('mousemove',e=>{_mapXY(e)});
 cv.addEventListener('mouseup',()=>{});
-cv.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];mx=t.clientX;my=t.clientY;mc=true;AC()},{passive:false});
-cv.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];mx=t.clientX;my=t.clientY},{passive:false});
+cv.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];_mapXY(t);mc=true;AC()},{passive:false});
+cv.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];_mapXY(t)},{passive:false});
 cv.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
 addEventListener('keydown',e=>{keys[e.key]=true;if(e.key===' '){e.preventDefault();mc=true;AC()}if((e.key==='r'||e.key==='R')&&(G.state==='dead'||G.state==='win'))newRun()});
 addEventListener('keyup',e=>{keys[e.key]=false});
@@ -2621,177 +2627,227 @@ function rExplore(t){
   }
 }
 
-// V61: Hands using AI-generated sprites with dynamic flame overlay
+// V100: Fully procedural hands — no sprite images, clean edges, correct poses, bigger size
+// Left hand: fist holding torch (back of hand faces viewer, fingers curl around handle)
+// Right hand: fist holding dagger (back of hand faces viewer, blade extends from behind fist)
 function drawHands(t,battle){
-  // V92: Offscreen canvas for hand lighting — source-atop only affects hand pixels
-  // V94: Smaller hands (was 1.3), better position
-  const sc=battle?0.50:1.05; // V94: smaller (was 0.55/1.3)
-  const handBob=Math.sin(t*0.008)*2*sc;
+  const sc=battle?0.65:1.3; // V100: much bigger (was 0.50/1.05)
+  const handBob=Math.sin(t*0.008)*3*sc;
   const torchFlame=0.85+Math.sin(t*0.02)*0.15+Math.sin(t*0.05)*0.05;
-  const torchX=battle?W*0.14:W*0.18; // V94: slightly inward
-  const wpnX=battle?W*0.86:W*0.84; // V94: slightly inward
-  const handY=battle?H*0.95:H*0.90; // V94: slightly higher
+  const torchX=battle?W*0.16:W*0.20;
+  const wpnX=battle?W*0.84:W*0.82;
+  const handY=battle?H*0.94:H*0.88;
 
-  // V92: Create/reuse offscreen canvas for hand compositing
-  if(!window._handCV||window._handCV.width!==W||window._handCV.height!==H){
-    window._handCV=document.createElement('canvas');window._handCV.width=W;window._handCV.height=H;
+  const unit=Math.max(8,W*0.022*sc); // base unit for hand drawing
+
+  // ===== Torch glow halo (drawn first, behind hands) =====
+  const glowCx=torchX;
+  const glowCy=handY-unit*2;
+  const lGlow=ctx.createRadialGradient(glowCx,glowCy,0,glowCx,glowCy,Math.max(unit*8,W*0.5));
+  lGlow.addColorStop(0,'rgba(255,190,80,0.50)');
+  lGlow.addColorStop(0.12,'rgba(250,160,55,0.32)');
+  lGlow.addColorStop(0.35,'rgba(200,100,35,0.14)');
+  lGlow.addColorStop(0.7,'rgba(120,50,15,0.05)');
+  lGlow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  ctx.fillStyle=lGlow;ctx.fillRect(0,glowCy-unit*6,W,unit*12);
+  ctx.restore();
+
+  // Warm spill light from torch toward right hand
+  const rGlow=ctx.createRadialGradient(torchX,handY-unit*2,0,torchX,handY-unit*2,W*0.7);
+  rGlow.addColorStop(0,'rgba(255,180,70,0.30)');
+  rGlow.addColorStop(0.3,'rgba(220,130,45,0.15)');
+  rGlow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  ctx.fillStyle=rGlow;ctx.fillRect(0,handY-unit*5,W,unit*8);
+  ctx.restore();
+
+  // ===== LEFT HAND: Torch =====
+  ctx.save();
+  ctx.translate(torchX,handY+handBob);
+  // Torch handle (wooden stick)
+  const handleH=unit*4;
+  ctx.fillStyle='#5a3a1a';
+  ctx.beginPath();
+  ctx.roundRect?ctx.roundRect(-unit*0.35,-handleH,unit*0.7,handleH+unit,unit*0.3):ctx.rect(-unit*0.35,-handleH,unit*0.7,handleH+unit);
+  ctx.fill();
+  // Handle wrap (leather strips)
+  ctx.fillStyle='#3a2510';
+  for(let wi=0;wi<3;wi++){
+    ctx.fillRect(-unit*0.38,-handleH*0.8+wi*unit*1.0,unit*0.76,unit*0.3);
   }
-  const hcv=window._handCV;
-  const hctx=hcv.getContext('2d');
-  hctx.clearRect(0,0,W,H);
+  // Torch head (wrapped rags at top)
+  ctx.fillStyle='#6a4020';
+  ctx.beginPath();ctx.ellipse(0,-handleH-unit*0.3,unit*0.7,unit*0.5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#4a3015';
+  ctx.beginPath();ctx.ellipse(0,-handleH-unit*0.5,unit*0.55,unit*0.35,0,0,Math.PI*2);ctx.fill();
 
-  // ===== LEFT HAND: torch =====
-  if(_handTorch.complete&&_handTorch.naturalWidth>0){
-    const iw=_handTorch.naturalWidth, ih=_handTorch.naturalHeight;
-    const dw2=W*(battle?0.10:0.25); // V94: smaller hands (was 0.12/0.30)
-    const dh2=dw2*(ih/iw);
-    const dx=torchX-dw2/2;
-    const dy=handY+handBob-dh2+dh2*0.08;
-
-    // V97: GPU-accelerated hand lighting (replaces getImageData pixel loop — 30x faster)
-    // Step 1: Draw hand to offscreen canvas
-    hctx.drawImage(_handTorch,dx,dy,dw2,dh2);
-    // Step 2: Darken edges via multiply composite (no temp canvas — fill gradient directly)
-    const dGrad=hctx.createRadialGradient(dx+dw2/2,dy+dh2*0.05,dw2*0.2, dx+dw2/2,dy+dh2*0.05,dw2*1.3);
-    dGrad.addColorStop(0,'rgba(255,255,255,1)');
-    dGrad.addColorStop(0.5,'rgba(180,160,120,1)'); // warm mid-tone
-    dGrad.addColorStop(1,'rgba(60,30,10,1)'); // dark warm edges
-    hctx.save();
-    hctx.globalCompositeOperation='multiply';
-    hctx.fillStyle=dGrad;hctx.fillRect(dx-20,dy-20,dw2+40,dh2+40);
-    hctx.restore();
-    // Step 3: Add warm glow via lighter composite
-    const wGrad=hctx.createRadialGradient(dx+dw2/2,dy+dh2*0.05,0, dx+dw2/2,dy+dh2*0.05,dw2*1.0);
-    wGrad.addColorStop(0,'rgba(255,190,80,0.6)');
-    wGrad.addColorStop(0.4,'rgba(255,130,40,0.25)');
-    wGrad.addColorStop(1,'rgba(0,0,0,0)');
-    hctx.save();
-    hctx.globalCompositeOperation='lighter';
-    hctx.fillStyle=wGrad;hctx.fillRect(dx-20,dy-20,dw2+40,dh2+40);
-    hctx.restore();
-
-    // V92: Torch glow halo — draw to main canvas BEFORE compositing hands
-    const glowCx=torchX;
-    const glowCy=dy+dh2*0.15;
-    const lGlow=ctx.createRadialGradient(glowCx,glowCy,0,glowCx,glowCy,Math.max(dw2*2.8,W*0.45));
-    lGlow.addColorStop(0,'rgba(255,190,80,0.55)');
-    lGlow.addColorStop(0.12,'rgba(250,160,55,0.35)');
-    lGlow.addColorStop(0.35,'rgba(200,100,35,0.15)');
-    lGlow.addColorStop(0.7,'rgba(120,50,15,0.05)');
-    lGlow.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.save();
-    ctx.globalCompositeOperation='lighter';
-    ctx.fillStyle=lGlow;ctx.fillRect(0,glowCy-dh2*1.8,W*0.9,dh2*3.5);
-    ctx.restore();
-
-    // V92: Composite lit hand onto main canvas
-    ctx.drawImage(hcv,0,0);
-    hctx.clearRect(0,0,W,H); // clear for right hand
-
-    // V93: Fire sprite animation — replace code-drawn flame with sequence frames
-    const fCx=dx+dw2/2;
-    const fCyL=dy+dh2*0.03;
-    const fScale=dw2/180;
-    if(_fireStrip.complete&&_fireStrip.naturalWidth>0){
-      // Sprite strip: 8 frames stacked vertically, each 48x128
-      const FS_W=48, FS_H=128, FS_COUNT=8;
-      const frameIdx=Math.floor((t*0.015)%FS_COUNT);
-      const fw2=dw2*0.45; // flame display width
-      const fh2=fw2*(FS_H/FS_W); // flame display height
-      ctx.save();
-      ctx.globalCompositeOperation='lighter';
-      ctx.globalAlpha=0.9*torchFlame;
-      ctx.drawImage(_fireStrip,0,frameIdx*FS_H,FS_W,FS_H,fCx-fw2/2,fCyL-fh2*0.85,fw2,fh2);
-      ctx.globalAlpha=1;
-      ctx.restore();
-    }else{
-      // Fallback: code-drawn flame
-      const fLayers=[
-        {sz:1.0,c:'255,80,5',a:0.55,off:0},
-        {sz:0.78,c:'255,125,20',a:0.65,off:7},
-        {sz:0.58,c:'255,170,40',a:0.75,off:14},
-        {sz:0.38,c:'255,215,85',a:0.88,off:21},
-        {sz:0.22,c:'255,250,180',a:0.95,off:28},
-      ];
-      ctx.save();
-      ctx.globalCompositeOperation='lighter';
-      for(const fl of fLayers){
-        const fw=16*fScale*fl.sz, fh=38*fScale*fl.sz*torchFlame;
-        const fy=fCyL-fl.off*fScale;
-        ctx.fillStyle='rgba('+fl.c+','+(fl.a*torchFlame)+')';
-        ctx.beginPath();
-        ctx.moveTo(fCx,fy+fh);
-        ctx.quadraticCurveTo(fCx-fw,fy+fh*0.3,fCx-fw*0.3,fy-fh*0.5);
-        ctx.quadraticCurveTo(fCx,fy-fh,fCx+fw*0.3,fy-fh*0.5);
-        ctx.quadraticCurveTo(fCx+fw,fy+fh*0.3,fCx,fy+fh);
-        ctx.fill();
-      }
-      ctx.fillStyle='rgba(255,255,230,'+(0.65*torchFlame)+')';
-      ctx.beginPath();ctx.ellipse(fCx,fCyL+3*fScale,3.5*fScale,11*fScale*torchFlame,0,0,Math.PI*2);ctx.fill();
-      ctx.restore();
-    }
-    // Embers (always drawn)
-    ctx.save();
-    ctx.globalCompositeOperation='lighter';
-    for(let ei=0;ei<6;ei++){
-      const ex=fCx+Math.sin(t*0.01+ei*1.7)*12*fScale;
-      const ey=fCyL-38*fScale-ei*8*fScale+Math.sin(t*0.02+ei)*4*fScale;
-      ctx.fillStyle='rgba(255,'+(100+ei*30)+',20,'+(0.60-ei*0.10)+')';
-      ctx.beginPath();ctx.ellipse(ex,ey,2*fScale,2*fScale,0,0,Math.PI*2);ctx.fill();
-    }
-    ctx.restore();
+  // Fist (back of hand faces viewer — knuckles in front, fingers curl around handle)
+  // Palm/fist body
+  ctx.fillStyle='#c8956a';
+  ctx.beginPath();ctx.ellipse(0,unit*0.3,unit*1.1,unit*1.3,0,0,Math.PI*2);ctx.fill();
+  // Knuckles (4 bumps facing viewer, slightly above center)
+  ctx.fillStyle='#d4a07a';
+  for(let ki=0;ki<4;ki++){
+    const kx=-unit*0.75+ki*unit*0.5;
+    ctx.beginPath();ctx.arc(kx,unit*0.1,unit*0.28,0,Math.PI*2);ctx.fill();
   }
-
-  // ===== RIGHT HAND: dagger =====
-  if(_handDagger.complete&&_handDagger.naturalWidth>0){
-    const iw=_handDagger.naturalWidth, ih=_handDagger.naturalHeight;
-    const dw2=W*(battle?0.10:0.25); // V94: smaller hands (was 0.12/0.30)
-    const dh2=dw2*(ih/iw);
-    const dx=wpnX-dw2/2;
-    const dy=handY+handBob*0.5-dh2+dh2*0.08;
-
-    // V97: GPU-accelerated lighting for right hand
-    hctx.drawImage(_handDagger,dx,dy,dw2,dh2);
-    // Darken far side (from torch on left)
-    const dGrad2=hctx.createRadialGradient(torchX,dy+dh2*0.1,dw2*0.3, torchX,dy+dh2*0.1,W*0.75);
-    dGrad2.addColorStop(0,'rgba(255,255,255,1)');
-    dGrad2.addColorStop(0.5,'rgba(200,170,130,1)');
-    dGrad2.addColorStop(1,'rgba(80,40,15,1)');
-    hctx.save();
-    hctx.globalCompositeOperation='multiply';
-    hctx.fillStyle=dGrad2;hctx.fillRect(dx-20,dy-20,dw2+40,dh2+40);
-    hctx.restore();
-    // Add warm spill light from torch
-    const wGrad2=hctx.createRadialGradient(torchX,dy+dh2*0.1,0, torchX,dy+dh2*0.1,W*0.5);
-    wGrad2.addColorStop(0,'rgba(255,180,70,0.5)');
-    wGrad2.addColorStop(0.5,'rgba(255,120,35,0.15)');
-    wGrad2.addColorStop(1,'rgba(0,0,0,0)');
-    hctx.save();
-    hctx.globalCompositeOperation='lighter';
-    hctx.fillStyle=wGrad2;hctx.fillRect(dx-20,dy-20,dw2+40,dh2+40);
-    hctx.restore();
-
-    // V92b: Stronger warm spill light on main canvas before compositing
-    const rGlow=ctx.createRadialGradient(torchX,dy+dh2*0.2,0,torchX,dy+dh2*0.2,W*0.70);
-    rGlow.addColorStop(0,'rgba(255,180,70,0.35)');
-    rGlow.addColorStop(0.3,'rgba(220,130,45,0.18)');
-    rGlow.addColorStop(0.6,'rgba(140,70,20,0.06)');
-    rGlow.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.save();
-    ctx.globalCompositeOperation='lighter';
-    ctx.fillStyle=rGlow;ctx.fillRect(0,dy-dh2*0.5,W,dh2*2);
-    ctx.restore();
-
-    // V92: Composite lit hand onto main canvas
-    ctx.drawImage(hcv,0,0);
-    hctx.clearRect(0,0,W,H);
+  // Finger curl shadows (below knuckles, wrapping around handle)
+  ctx.fillStyle='#a87850';
+  for(let fi=0;fi<4;fi++){
+    const fx=-unit*0.75+fi*unit*0.5;
+    ctx.beginPath();ctx.ellipse(fx,unit*0.55,unit*0.26,unit*0.4,0,0,Math.PI*2);ctx.fill();
   }
+  // Thumb (on right side of fist, visible curl)
+  ctx.fillStyle='#c8956a';
+  ctx.beginPath();ctx.ellipse(unit*0.85,unit*0.2,unit*0.35,unit*0.55,-0.3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#d4a07a';
+  ctx.beginPath();ctx.arc(unit*0.95,unit*0.0,unit*0.22,0,Math.PI*2);ctx.fill();
+  // Wrist cuff (leather bracer)
+  ctx.fillStyle='#3a2510';
+  ctx.beginPath();ctx.ellipse(0,unit*1.5,unit*0.9,unit*0.5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#4a3015';
+  ctx.beginPath();ctx.ellipse(0,unit*1.5,unit*0.85,unit*0.45,0,0,Math.PI*2);ctx.fill();
+  // Shadow gradient on fist (darker bottom/right)
+  const fistShade=ctx.createRadialGradient(-unit*0.3,unit*0.1,0,-unit*0.3,unit*0.1,unit*2);
+  fistShade.addColorStop(0,'rgba(0,0,0,0)');
+  fistShade.addColorStop(0.6,'rgba(0,0,0,0.15)');
+  fistShade.addColorStop(1,'rgba(0,0,0,0.4)');
+  ctx.fillStyle=fistShade;ctx.beginPath();ctx.ellipse(0,unit*0.3,unit*1.1,unit*1.3,0,0,Math.PI*2);ctx.fill();
+  ctx.restore();
 
-  // V94: Ground shadows under both hands — soft elliptical darkening
+  // ===== Torch flame (V100: procedural multi-layer animated fire) =====
+  const fCx=torchX;
+  const fCy=handY+handBob-handleH-unit*0.5;
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  // Fire layers — outer to inner, each with independent flicker
+  const fireLayers=[
+    {sz:1.0,c:'255,60,5',a:0.50,off:0,phase:0.003},
+    {sz:0.78,c:'255,100,15',a:0.60,off:unit*0.4,phase:0.004},
+    {sz:0.58,c:'255,150,30',a:0.70,off:unit*0.8,phase:0.005},
+    {sz:0.38,c:'255,200,60',a:0.85,off:unit*1.2,phase:0.006},
+    {sz:0.22,c:'255,240,150',a:0.95,off:unit*1.6,phase:0.008},
+  ];
+  for(const fl of fireLayers){
+    const flicker=Math.sin(t*fl.phase)*0.15+Math.sin(t*fl.phase*2.3)*0.08;
+    const fw=unit*1.2*fl.sz*(1+flicker);
+    const fh=unit*3.0*fl.sz*torchFlame*(1+flicker*0.5);
+    const fy=fCy-fl.off;
+    const sway=Math.sin(t*fl.phase*1.5)*fw*0.15;
+    ctx.fillStyle='rgba('+fl.c+','+(fl.a*torchFlame)+')';
+    ctx.beginPath();
+    ctx.moveTo(fCx+sway,fy+fh);
+    ctx.quadraticCurveTo(fCx-fw+sway,fy+fh*0.3,fCx-fw*0.3+sway,fy-fh*0.5);
+    ctx.quadraticCurveTo(fCx+sway,fy-fh,fCx+fw*0.3+sway*1.3,fy-fh*0.5);
+    ctx.quadraticCurveTo(fCx+fw+sway*1.3,fy+fh*0.3,fCx+sway,fy+fh);
+    ctx.fill();
+  }
+  // Bright core
+  ctx.fillStyle='rgba(255,255,230,'+(0.6*torchFlame)+')';
+  ctx.beginPath();ctx.ellipse(fCx,fCy+unit*0.5,unit*0.4,unit*1.2*torchFlame,0,0,Math.PI*2);ctx.fill();
+  // Embers
+  for(let ei=0;ei<6;ei++){
+    const ex=fCx+Math.sin(t*0.01+ei*1.7)*unit*1.5;
+    const ey=fCy-unit*3-ei*unit*0.8+Math.sin(t*0.02+ei)*unit*0.5;
+    ctx.fillStyle='rgba(255,'+(100+ei*30)+',20,'+(0.55-ei*0.08)+')';
+    ctx.beginPath();ctx.ellipse(ex,ey,unit*0.15,unit*0.15,0,0,Math.PI*2);ctx.fill();
+  }
+  ctx.restore();
+
+  // ===== RIGHT HAND: Dagger =====
+  ctx.save();
+  ctx.translate(wpnX,handY+handBob*0.5);
+  // Dagger blade (extends upward from behind fist)
+  const bladeLen=unit*5;
+  const bladeW=unit*0.6;
+  // Blade gradient (steel with torch reflection)
+  const bladeGrad=ctx.createLinearGradient(-bladeW,0,bladeW,0);
+  bladeGrad.addColorStop(0,'#8899aa');
+  bladeGrad.addColorStop(0.3,'#ccdde8');
+  bladeGrad.addColorStop(0.5,'#eef5ff');
+  bladeGrad.addColorStop(0.7,'#ccdde8');
+  bladeGrad.addColorStop(1,'#8899aa');
+  ctx.fillStyle=bladeGrad;
+  ctx.beginPath();
+  ctx.moveTo(0,-bladeLen); // tip
+  ctx.lineTo(-bladeW,-bladeLen+bladeW*2);
+  ctx.lineTo(-bladeW*0.8,-unit*0.5);
+  ctx.lineTo(bladeW*0.8,-unit*0.5);
+  ctx.lineTo(bladeW,-bladeLen+bladeW*2);
+  ctx.closePath();
+  ctx.fill();
+  // Blade center ridge (highlight)
+  ctx.strokeStyle='rgba(255,255,255,0.4)';
+  ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(0,-bladeLen+bladeW);ctx.lineTo(0,-unit*0.5);ctx.stroke();
+  // Crossguard
+  ctx.fillStyle='#8a6a3a';
+  ctx.beginPath();
+  ctx.ellipse(0,-unit*0.4,unit*1.0,unit*0.35,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle='#a68a50';
+  ctx.beginPath();
+  ctx.ellipse(0,-unit*0.45,unit*0.95,unit*0.3,0,0,Math.PI*2);
+  ctx.fill();
+  // Handle/pommel
+  ctx.fillStyle='#3a2510';
+  ctx.fillRect(-unit*0.3,-unit*0.2,unit*0.6,unit*0.8);
+  ctx.fillStyle='#5a3a1a';
+  ctx.fillRect(-unit*0.25,-unit*0.15,unit*0.5,unit*0.7);
+  // Pommel cap
+  ctx.fillStyle='#8a6a3a';
+  ctx.beginPath();ctx.arc(0,unit*0.65,unit*0.3,0,Math.PI*2);ctx.fill();
+
+  // Fist (back of hand faces viewer — gripping dagger handle, blade goes up behind fist)
+  ctx.fillStyle='#c8956a';
+  ctx.beginPath();ctx.ellipse(0,unit*0.5,unit*1.1,unit*1.3,0,0,Math.PI*2);ctx.fill();
+  // Knuckles (4 bumps facing viewer)
+  ctx.fillStyle='#d4a07a';
+  for(let ki=0;ki<4;ki++){
+    const kx=-unit*0.75+ki*unit*0.5;
+    ctx.beginPath();ctx.arc(kx,unit*0.3,unit*0.28,0,Math.PI*2);ctx.fill();
+  }
+  // Finger curl shadows
+  ctx.fillStyle='#a87850';
+  for(let fi=0;fi<4;fi++){
+    const fx=-unit*0.75+fi*unit*0.5;
+    ctx.beginPath();ctx.ellipse(fx,unit*0.75,unit*0.26,unit*0.4,0,0,Math.PI*2);ctx.fill();
+  }
+  // Thumb (on left side of right fist)
+  ctx.fillStyle='#c8956a';
+  ctx.beginPath();ctx.ellipse(-unit*0.85,unit*0.4,unit*0.35,unit*0.55,0.3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#d4a07a';
+  ctx.beginPath();ctx.arc(-unit*0.95,unit*0.2,unit*0.22,0,Math.PI*2);ctx.fill();
+  // Wrist cuff
+  ctx.fillStyle='#3a2510';
+  ctx.beginPath();ctx.ellipse(0,unit*1.7,unit*0.9,unit*0.5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#4a3015';
+  ctx.beginPath();ctx.ellipse(0,unit*1.7,unit*0.85,unit*0.45,0,0,Math.PI*2);ctx.fill();
+  // Shadow on fist
+  const fistShade2=ctx.createRadialGradient(unit*0.3,unit*0.3,0,unit*0.3,unit*0.3,unit*2);
+  fistShade2.addColorStop(0,'rgba(0,0,0,0)');
+  fistShade2.addColorStop(0.6,'rgba(0,0,0,0.2)');
+  fistShade2.addColorStop(1,'rgba(0,0,0,0.45)');
+  ctx.fillStyle=fistShade2;ctx.beginPath();ctx.ellipse(0,unit*0.5,unit*1.1,unit*1.3,0,0,Math.PI*2);ctx.fill();
+  // Warm edge light from torch (left side of right hand)
+  const warmEdge=ctx.createRadialGradient(-unit*2,unit*0.3,0,-unit*2,unit*0.3,unit*4);
+  warmEdge.addColorStop(0,'rgba(255,180,70,0.25)');
+  warmEdge.addColorStop(0.5,'rgba(255,120,40,0.10)');
+  warmEdge.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  ctx.fillStyle=warmEdge;ctx.beginPath();ctx.ellipse(0,unit*0.5,unit*1.3,unit*1.5,0,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+  ctx.restore();
+
+  // Ground shadows under both hands
   ctx.save();
   ctx.fillStyle='rgba(0,0,0,0.25)';
-  ctx.beginPath();ctx.ellipse(torchX, handY+8, W*0.08, 4, 0, 0, Math.PI*2);ctx.fill();
-  ctx.beginPath();ctx.ellipse(wpnX, handY+8, W*0.07, 3.5, 0, 0, Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(torchX,handY+unit*2.5,unit*1.5,unit*0.5,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(wpnX,handY+unit*2.5,unit*1.3,unit*0.45,0,0,Math.PI*2);ctx.fill();
   ctx.restore();
 }
 
@@ -3010,7 +3066,7 @@ function rBattle(t){
   // Top bar
   drawPlayerBattleBar();
 
-  // Enemies — drawn in corridor perspective, closer = larger
+  // Enemies — drawn in corridor perspective, closer = larger (V100: much bigger monsters)
   G.hEnemy=-1;
   const alive=G.enemies.filter(e=>!e.dead);
   const totalSlots=alive.length;
@@ -3018,31 +3074,31 @@ function rBattle(t){
     if(e.dead)return;
     const slotIdx=alive.indexOf(e);
     // Closer enemies (index 0) are larger and lower
-    const perspective=1-(slotIdx/Math.max(totalSlots,2))*0.35;
-    const ex=W/2+(slotIdx-(totalSlots-1)/2)*Math.min(90,W*0.25)*perspective;
-    const ey=H*(0.18+0.12*(1-perspective))+8;
+    const perspective=1-(slotIdx/Math.max(totalSlots,2))*0.25;
+    const ex=W/2+(slotIdx-(totalSlots-1)/2)*Math.min(90,W*0.22)*perspective;
+    const ey=H*(0.22+0.10*(1-perspective))+8;
 
     // Shadow
     ctx.fillStyle='rgba(0,0,0,.5)';
     ctx.beginPath();
-    ctx.ellipse(ex,ey+55*perspective,38*perspective,8*perspective,0,0,Math.PI*2);
+    ctx.ellipse(ex,ey+65*perspective,48*perspective,10*perspective,0,0,Math.PI*2);
     ctx.fill();
 
-    // Monster image — scaled by perspective depth
+    // Monster image — V100: enlarged 70% (was min(130,110), now min(220,185))
     const img=getImg(EDEF[e.key].ico);
     if(img&&img.complete&&img.naturalWidth>0){
-      const bob=Math.sin(t*.003+i)*4;
-      const baseSz=Math.min(130,110+(e.boss?35:0));
+      const bob=Math.sin(t*.003+i)*5;
+      const baseSz=Math.min(220,185+(e.boss?45:0));
       const sz=baseSz*perspective;
       ctx.save();
       ctx.shadowColor='rgba(0,0,0,.6)';
-      ctx.shadowBlur=10;
+      ctx.shadowBlur=12;
       ctx.drawImage(img,ex-sz/2,ey-sz/2+bob,sz,sz);
       ctx.restore();
     }
-    // Name + HP bar
-    const ew=80*perspective;
-    const hby=ey+52*perspective;
+    // Name + HP bar (V100: scale with bigger monsters)
+    const ew=100*perspective;
+    const hby=ey+60*perspective;
     rr(ex-ew/2,hby,ew,10,3,'#1a0000','#300');
     rr(ex-ew/2+1,hby+1,(ew-2)*(e.hp/e.maxHp),8,2,'#c33');
     dt(e.hp+'/'+e.maxHp,ex,hby+8*perspective,9,'#fff');
@@ -3057,12 +3113,12 @@ function rBattle(t){
     if(e.burn>0)dt('🔥'+e.burn,ex-30*perspective,ey-48*perspective,9,'#f60');
     if(e.poisonDmg>0)dt('☠'+e.poisonDmg,ex+30*perspective,ey-48*perspective,9,'#a0f');
     if(e.enraged)dt('狂暴!',ex,ey-60*perspective,10,'#f00','center','bold');
-    // Targeting
+    // Targeting (V100: bigger hit area for larger monsters)
     if(G.sel>=0&&G.turn==='p'){
       const c=CARDS[G.hand[G.sel]];if(c&&c.t==='atk'){
-        const hv=Math.abs(mx-ex)<50*perspective&&Math.abs(my-ey)<55*perspective;
+        const hv=Math.abs(mx-ex)<60*perspective&&Math.abs(my-ey)<70*perspective;
         ctx.strokeStyle=hv?'#ff0':'rgba(255,255,0,.3)';ctx.lineWidth=2;
-        ctx.beginPath();ctx.ellipse(ex,ey+50*perspective,42*perspective,12*perspective,0,0,Math.PI*2);ctx.stroke();
+        ctx.beginPath();ctx.ellipse(ex,ey+55*perspective,52*perspective,14*perspective,0,0,Math.PI*2);ctx.stroke();
         if(hv)G.hEnemy=i;
       }
     }
@@ -3077,31 +3133,38 @@ function rBattle(t){
     dt('HP'+G.pet.hp,px+38,py,8,'#f88','left');
   }
 
-  // Action buttons row
-  const actY=H*.55,actW=55,actH=30;
-  const cH=hitBtn(W/2-actW-3,actY,actW,actH);
+  // V100: Action buttons — vertical column on right edge, no overlap with cards
+  const actX=W-62, actW=52, actH=34, actGap=6;
+  const actY0=H*0.30;
+  // Cook button
+  const cH=hitBtn(actX,actY0,actW,actH);
   const canCook=G.ings.length>0&&(G.cookedThisTurn||0)<COOK_PER_TURN&&G.dishes.length<MAX_DISHES;
-  rr(W/2-actW-3,actY,actW,actH,5,cH&&canCook?'#332':'#1a1a1a','#fa0');
-  dt('烹饪',W/2-actW/2-3,actY+actH/2+5,11,canCook?'#fa0':'#555','center','bold');
+  rr(actX,actY0,actW,actH,6,cH&&canCook?'#332':'#1a1a1a','#fa0');
+  dt('烹饪',actX+actW/2,actY0+actH/2+5,11,canCook?'#fa0':'#555','center','bold');
   if(cH&&mc&&canCook){mc=false;S.clk();startCook()}
-  const eH=hitBtn(W/2+3,actY,actW,actH);
+  // Eat button
+  const actY1=actY0+actH+actGap;
+  const eH=hitBtn(actX,actY1,actW,actH);
   const canEat=G.dishes.length>0&&(G.cookEatenThisTurn||0)<EAT_PER_TURN;
-  rr(W/2+3,actY,actW,actH,5,eH&&canEat?'#1a2a1a':'#1a1a1a','#5c8');
-  dt('吃菜',W/2+actW/2+3,actY+actH/2+5,11,canEat?'#5c8':'#555','center','bold');
+  rr(actX,actY1,actW,actH,6,eH&&canEat?'#1a2a1a':'#1a1a1a','#5c8');
+  dt('吃菜',actX+actW/2,actY1+actH/2+5,11,canEat?'#5c8':'#555','center','bold');
   if(eH&&mc&&canEat){mc=false;S.clk();eatDish()}
-
-  // Feed pet
-  if(G.pet&&G.dishes.length>0&&hitBtn(8,actY,55,actH)&&mc){mc=false;S.clk();feedPet()}
-  if(G.pet&&G.dishes.length>0){rr(8,actY,55,actH,5,'#2a2a1a','#a80');dt('喂宠',8+27,actY+actH/2+5,11,'#a80','center','bold')}
-
-  // End turn
-  const etW=66;
-  const etH=hitBtn(W-etW-6,actY,etW,actH);
-  rr(W-etW-6,actY,etW,actH,5,etH&&G.turn==='p'?'#3a1a1a':'#1a1a1a','#c44');
-  dt('结束',W-etW/2-6,actY+actH/2+5,11,G.turn==='p'?'#c44':'#555','center','bold');
+  // Feed pet (if pet exists)
+  const actY2=actY1+actH+actGap;
+  if(G.pet&&G.dishes.length>0){
+    const pH2=hitBtn(actX,actY2,actW,actH);
+    rr(actX,actY2,actW,actH,6,pH2?'#2a2a1a':'#1a1a1a','#a80');
+    dt('喂宠',actX+actW/2,actY2+actH/2+5,11,'#a80','center','bold');
+    if(pH2&&mc){mc=false;S.clk();feedPet()}
+  }
+  // End turn button
+  const etY=actY2+(G.pet&&G.dishes.length>0?actH+actGap:0);
+  const etH=hitBtn(actX,etY,actW,actH);
+  rr(actX,etY,actW,actH,6,etH&&G.turn==='p'?'#3a1a1a':'#1a1a1a','#c44');
+  dt('结束',actX+actW/2,etY+actH/2+5,11,G.turn==='p'?'#c44':'#555','center','bold');
   if(etH&&mc&&G.turn==='p'){mc=false;S.clk();endTurn();if(!_etGuard){_etGuard=true;setTimeout(()=>enemyAct(),300)}}
 
-  if(G.turn==='e')dt('敌人行动中...',W/2,actY+actH+16,13,'#f44','center','bold');
+  if(G.turn==='e')dt('敌人行动中...',W/2,H*.52,13,'#f44','center','bold');
 
   // Hand cards
   drawHandUI();
