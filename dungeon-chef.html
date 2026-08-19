@@ -421,7 +421,7 @@ const G={
   sel:-1,turn:'p',floor:0,
   cook:null,rewards:[],
   bossDefeated:false,bossFed:false,bossWant:null,bossDishKey:null,
-  bossFirstKill:false,bossSeasonDropped:[],
+  bossFirstKill:false,bossSeasonDropped:[],bossDoorNear:false,
   permBuffs:{str:0,hp:0,e:0},hasBossDish:false,
   cookware:'none', // V96: current cookware
   meta:{seenMobs:[],seenRecipes:[],seenBoss:[],days:0,lastLogin:'',streak:0,titles:[],coins:0,bestFloor:0,burntCount:0},
@@ -625,7 +625,7 @@ function enterFloor(floorIdx){
   G.mapMons=d.mons;
   G.mapChests=d.chests;
   G.bossDishKey=FLOORS[floorIdx].boss;
-  G.bossDefeated=false;G.bossFed=false;G.bossFirstKill=false;G.hasBossDish=false;
+  G.bossDefeated=false;G.bossFed=false;G.bossFirstKill=false;G.hasBossDish=false;G.bossDoorNear=false;
   G.px=1.5;G.py=1.5;G.pdir=Math.PI/2; // face south (into corridor depth)
   G.mapShops=d.shops||[]; // V96: shop NPCs
   G.state='explore';
@@ -2287,12 +2287,19 @@ function checkEncounters(){
       return;
     }
   }
-  // Boss encounter
+  // Boss encounter (V101: edge-triggered — fires ONCE when walking INTO the boss
+  // gate area. Standing inside no longer re-opens bossAsk every 100ms, which
+  // trapped the player before. After leaving the gate, re-entry triggers again.)
   if(!G.bossFed){
     const bx=G.mapW-2+0.5,by=G.mapH-2+0.5;
     const d=Math.sqrt((bx-G.px)**2+(by-G.py)**2);
-    if(d<1.0){
-      startBossEncounter();
+    const near=d<1.0;
+    if(near&&!G.bossDoorNear){
+      G.bossDoorNear=true;
+      if(!G.bossDefeated){startBossEncounter()}
+      else{G.state='bossAsk';S.bell();showMsg('给 '+EDEF[G.bossDishKey].n+' 做菜!',60)}
+    }else if(!near&&G.bossDoorNear){
+      G.bossDoorNear=false;
     }
   }
 }
@@ -2337,9 +2344,12 @@ function startEncounter(m){
 function startBossEncounter(){
   // V96: If boss has been fed and next floor unlocked, go to next floor
   if(G.bossFed){enterFloor(G.floor+1);return}
-  // V96: If boss defeated but not yet fed, show boss ask (cook dish to unlock next floor)
+  // V101: If boss already defeated but not fed — don't loop back to bossAsk.
+  // Player can still re-fight the boss to grind drops (reset defeated flag so
+  // the fight behaves normally again). bossAsk is only reached via onClear.
   if(G.bossDefeated){
-    G.state='bossAsk';showMsg('给 '+EDEF[G.bossDishKey].n+' 做菜!',60);return;
+    G.bossDefeated=false;
+    G.bossFirstKill=true; // treat as re-fight: skip story, drop straight to bossAsk on next kill
   }
   const ed=EDEF[G.bossDishKey];
   G.enemies=[mkEnemy(G.bossDishKey,G.floor)];G.lastBossKey=G.bossDishKey;
@@ -3446,10 +3456,10 @@ function rBossAsk(t){
     dt(canCookBossDish()?'食材足够,去烹饪!':'需要更多食材',W/2,H*.5,11,canCookBossDish()?'#cfa':'#888');
     if(canCookBossDish()&&btn(W/2-80,H*.55,160,38,'制作Boss菜','#fa0')&&mc){S.clk();cookBossDish();G.state='bossFeed'}
   }
-  // V96: Can still go explore to gather more materials
-  if(btn(20,H*.85,90,36,'继续探索','#888')&&mc){S.clk();G.state='explore'}
-  // V96: Can challenge boss again for more drops
-  if(btn(W-110,H*.85,90,36,'再战Boss','#f44')&&mc){S.clk();startBossEncounter()}
+  // V101: 继续探索/再战Boss moved UP — right under the ingredient hint
+  // (previously at H*.85, too far from the info; now directly below 更多食材)
+  if(btn(W/2-96,H*.63,92,40,'继续探索','#888')&&mc){S.clk();G.state='explore'}
+  if(btn(W/2+4,H*.63,92,40,'再战Boss','#f44')&&mc){S.clk();startBossEncounter()}
 }
 
 function rBossFeed(t){
