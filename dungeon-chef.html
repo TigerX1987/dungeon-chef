@@ -445,6 +445,7 @@ const G={
   mapMons:[], // monsters on map
   mapChests:[], // treasure chests
   mapShops:[], // V96: shop NPCs on map
+  shopNear:false, // V103: edge-trigger flag for shop entry
   joystick:{active:false,sx:0,sy:0,cx:0,cy:0},
   miniZoom:1,
   encounterTimer:0,encounterMon:null,
@@ -478,36 +479,18 @@ function genMap(floorIdx){
   const m=[];
   for(let y=0;y<h;y++){m[y]=[];for(let x=0;x<w;x++)m[y][x]=1} // all walls
   
-  // Carve rooms via random walk — V20: narrower rooms, longer corridors for corridor feel
-  let cx=1,cy=1;
-  const visited=new Set();
-  for(let i=0;i<f.rooms*4;i++){
-    const rw=ri(1,3),rh=ri(1,3); // V20: smaller rooms (was 2-4)
-    for(let dy=0;dy<rh;dy++)for(let dx=0;dx<rw;dx++){
-      const x2=cx+dx,y2=cy+dy;
-      if(x2>0&&x2<w-1&&y2>0&&y2<h-1)m[y2][x2]=0;
-    }
-    // Connect to next room with corridor — V20: longer corridors (was 2-4)
-    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-    const d=pick(dirs);
-    const dist=ri(3,6); // V20: longer corridors
-    for(let s=0;s<dist;s++){
-      cx=clamp(cx+d[0],1,w-2);cy=clamp(cy+d[1],1,h-2);
-      m[cy][cx]=0;
-    }
-  }
-  // V20: Ensure a long eastward corridor from start (at least 5 tiles)
-  for(let dx=1;dx<=6;dx++){
-    if(1+dx<w-1) m[1][1+dx]=0; // carve east from (1,1)
-  }
-  // Ensure start area is open
-  for(let dy=0;dy<3;dy++)for(let dx=0;dx<3;dx++)if(dy<h&&dx<w)m[dy][dx]=0;
+  // V103: Simplified wide map — L-shaped main corridor, 3 tiles wide
+  // 1. East corridor (rows 1-3, cols 0-8) — 3 wide
+  for(let y=1;y<=3;y++)for(let x=0;x<=8;x++)m[y][x]=0;
+  // 2. South corridor (cols 5-7, rows 0-9) — 3 wide
+  for(let y=0;y<=9;y++)for(let x=5;x<=7;x++)m[y][x]=0;
+  // 3. Boss room (cols 7-10, rows 8-10) — 4x3 open
+  for(let y=8;y<=10;y++)for(let x=7;x<=10;x++)m[y][x]=0;
+  // 4. Start area (3x3 at top-left)
+  for(let y=0;y<=2;y++)for(let x=0;x<=2;x++)m[y][x]=0;
   
   // Place boss room at far corner
   const bx=w-2,by=h-2;
-  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-    const x2=bx+dx,y2=by+dy;if(x2>0&&x2<w&&y2>0&&y2<h)m[y2][x2]=0;
-  }
   m[by][bx]=2; // boss marker
   
   // BFS flood-fill from start (1,1) to find all reachable tiles
@@ -586,13 +569,23 @@ function genMap(floorIdx){
   const explored=[];
   for(let y=0;y<h;y++){explored[y]=[];for(let x=0;x<w;x++)explored[y][x]=false}
    
-  // V96: Place a shop NPC at a reachable position far from start
+  // V103: Place a shop NPC in the middle of the south corridor (clearly visible from both directions)
   const shops=[];
   if(opens.length>3){
-    let bestShopTile=null,bestShopDist=0;
+    // Priority: south corridor middle (cols 5-7, rows 4-7) — middle of L-shape
+    let bestShopTile=null,bestShopScore=-1;
     for(const [sx,sy] of opens){
+      // Skip tiles in boss area (bottom-right corner)
+      if(sx>=w-4&&sy>=h-4)continue;
+      let score=0;
+      // Strongly prefer south corridor middle (cols 5-7, rows 4-7)
+      if(sx>=5&&sx<=7&&sy>=4&&sy<=7)score=100;
+      // Also acceptable: east corridor middle (cols 3-6, rows 1-3)
+      else if(sx>=3&&sx<=6&&sy>=1&&sy<=3)score=50;
+      // Add distance from start as tiebreaker (prefer farther)
       const d=Math.sqrt((sx-1.5)**2+(sy-1.5)**2);
-      if(d>bestShopDist&&d>5){bestShopDist=d;bestShopTile=[sx,sy]}
+      score+=d*0.5;
+      if(score>bestShopScore){bestShopScore=score;bestShopTile=[sx,sy]}
     }
     if(bestShopTile){
       // Pick random ingredients from this floor's pool to sell
@@ -632,6 +625,7 @@ function enterFloor(floorIdx){
   G.mapChests=d.chests;
   G.bossDishKey=FLOORS[floorIdx].boss;
   G.bossDefeated=false;G.bossFed=false;G.bossFirstKill=false;G.hasBossDish=false;G.bossDoorNear=false;
+  G.shopNear=false;
   G.px=1.5;G.py=1.5;G.pdir=Math.PI/2; // face south (into corridor depth)
   G.mapShops=d.shops||[]; // V96: shop NPCs
   G.state='explore';
@@ -1940,6 +1934,19 @@ function drawCorridorProps(t,dir,fov,horizonY,maxDist){
   } // propPasses pass
 }
 
+// V103: Line-of-sight check — returns true if no wall blocks the view from (x0,y0) to (x1,y1)
+function hasLOS(x0,y0,x1,y1){
+  const dx=x1-x0,dy=y1-y0;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  const steps=Math.ceil(dist*3); // check every ~0.33 tiles
+  for(let i=1;i<steps;i++){
+    const t=i/steps;
+    const cx=x0+dx*t,cy=y0+dy*t;
+    if(isWall(cx,cy))return false;
+  }
+  return true;
+}
+
 // Draw entities (monsters/chests/boss) in the first-person corridor
 function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
   const ents=[];
@@ -1954,6 +1961,7 @@ function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
     const angle=Math.atan2(dy,dx)-dir;
     let na=angle;while(na>Math.PI)na-=Math.PI*2;while(na<-Math.PI)na+=Math.PI*2;
     if(Math.abs(na)>fov/2+0.3)continue;
+    if(!hasLOS(G.px,G.py,m.x,m.y))continue; // V103: wall occlusion
     ents.push({type:'mon',m,x:m.x,y:m.y,dist,angle:na,scaleX:Math.cos(na)});
   }
   // Chests
@@ -1967,6 +1975,7 @@ function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
     const angle=Math.atan2(dy,dx)-dir;
     let na=angle;while(na>Math.PI)na-=Math.PI*2;while(na<-Math.PI)na+=Math.PI*2;
     if(Math.abs(na)>fov/2+0.3)continue;
+    if(!hasLOS(G.px,G.py,cx2,cy2))continue; // V103: wall occlusion
     ents.push({type:'chest',x:cx2,y:cy2,dist,angle:na,scaleX:Math.cos(na)});
   }
   // V96: Shop NPCs
@@ -1980,6 +1989,7 @@ function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
     const angle=Math.atan2(dy,dx)-dir;
     let na=angle;while(na>Math.PI)na-=Math.PI*2;while(na<-Math.PI)na+=Math.PI*2;
     if(Math.abs(na)>fov/2+0.3)continue;
+    if(!hasLOS(G.px,G.py,cx2,cy2))continue; // V103: wall occlusion
     ents.push({type:'shop',x:cx2,y:cy2,dist,angle:na,scaleX:Math.cos(na)});
   }
   // Boss
@@ -1993,7 +2003,9 @@ function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
         const angle=Math.atan2(dy,dx)-dir;
         let na=angle;while(na>Math.PI)na-=Math.PI*2;while(na<-Math.PI)na+=Math.PI*2;
         if(Math.abs(na)<=fov/2+0.3){
-          ents.push({type:'boss',x:bx,y:by,dist,angle:na,scaleX:Math.cos(na)});
+          if(hasLOS(G.px,G.py,bx,by)){ // V103: wall occlusion
+            ents.push({type:'boss',x:bx,y:by,dist,angle:na,scaleX:Math.cos(na)});
+          }
         }
       }
     }
@@ -2112,24 +2124,51 @@ function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
         dt(ed?ed.n:'Boss',sx,bY-bsz*0.05,12*scale+4,G.bossDefeated?'#fa0':'#f44','center','bold');
       }
     }else if(e.type==='shop'){
-      // V96: Shop NPC — a hooded merchant with a glowing lantern
+      // V103: Shop NPC — detailed Q-cute hooded merchant with cart
       const shY=horizonY-sz*0.4+bob;
       ctx.globalAlpha=0.6+dim*0.4;
-      // Body — hooded figure
+      // Cart/stall body
+      ctx.fillStyle='#3a2518';
+      ctx.fillRect(sx-sz*0.35,shY+sz*0.15,sz*0.7,sz*0.25);
+      ctx.fillStyle='#4a3520';
+      ctx.fillRect(sx-sz*0.30,shY+sz*0.10,sz*0.6,sz*0.08);
+      // Cart wheels
+      ctx.strokeStyle='#2a1a0a';ctx.lineWidth=Math.max(1,sz*0.02);
+      ctx.beginPath();ctx.arc(sx-sz*0.2,shY+sz*0.42,sz*0.06,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.arc(sx+sz*0.2,shY+sz*0.42,sz*0.06,0,Math.PI*2);ctx.stroke();
+      // Body — hooded robe
       ctx.fillStyle='#3a2a4a';
-      ctx.beginPath();ctx.ellipse(sx,shY+sz*0.3,sz*0.25,sz*0.35,0,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.ellipse(sx-sz*0.05,shY+sz*0.1,sz*0.18,sz*0.28,0,0,Math.PI*2);ctx.fill();
       // Head/hood
       ctx.fillStyle='#4a3a5a';
-      ctx.beginPath();ctx.arc(sx,shY+sz*0.05,sz*0.18,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(sx-sz*0.05,shY-sz*0.12,sz*0.14,0,Math.PI*2);ctx.fill();
+      // Hood point
+      ctx.fillStyle='#5a4a6a';
+      ctx.beginPath();ctx.moveTo(sx-sz*0.05-sz*0.12,shY-sz*0.08);ctx.lineTo(sx-sz*0.05,shY-sz*0.3);ctx.lineTo(sx-sz*0.05+sz*0.12,shY-sz*0.08);ctx.fill();
+      // Eyes (tiny dots)
+      ctx.fillStyle='#ffd';
+      ctx.beginPath();ctx.arc(sx-sz*0.09,shY-sz*0.14,sz*0.025,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(sx-sz*0.01,shY-sz*0.14,sz*0.025,0,Math.PI*2);ctx.fill();
+      // Lantern on cart
+      ctx.fillStyle='#ffc';
+      ctx.beginPath();ctx.arc(sx+sz*0.25,shY+sz*0.05,sz*0.05,0,Math.PI*2);ctx.fill();
       // Lantern glow
       ctx.save();ctx.globalCompositeOperation='lighter';
-      const lG=ctx.createRadialGradient(sx+sz*0.2,shY+sz*0.2,0,sx+sz*0.2,shY+sz*0.2,sz*0.5);
+      const lG=ctx.createRadialGradient(sx+sz*0.25,shY+sz*0.05,0,sx+sz*0.25,shY+sz*0.05,sz*0.5);
       lG.addColorStop(0,`rgba(120,180,255,${0.4*dim})`);
       lG.addColorStop(1,'rgba(0,0,0,0)');
-      ctx.fillStyle=lG;ctx.fillRect(sx-sz*0.3,shY-sz*0.1,sz*0.8,sz*0.6);
+      ctx.fillStyle=lG;ctx.fillRect(sx-sz*0.3,shY-sz*0.2,sz*0.8,sz*0.6);
       ctx.restore();
+      // Goods on cart (bottles/potions)
+      const goods=['#8c4','#c84','#48c'];
+      for(let gi=0;gi<3;gi++){
+        ctx.fillStyle=goods[gi];
+        const gx=sx-sz*0.2+gi*sz*0.15;
+        ctx.beginPath();ctx.ellipse(gx,shY+sz*0.08,sz*0.04,sz*0.06,0,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#664';ctx.fillRect(gx-sz*0.02,shY+sz*0.02,sz*0.04,sz*0.02);
+      }
       ctx.globalAlpha=1;
-      if(e.dist<4)dt('商人',sx,shY-sz*0.1,9*scale+5,'#8cf','center','bold');
+      if(e.dist<4)dt('商人',sx,shY-sz*0.35,9*scale+5,'#8cf','center','bold');
     }
   }
 }
@@ -2138,8 +2177,8 @@ function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
 // ================================================================
 function updateMovement(dt){
   if(G.state!=='explore')return;
-  const spd=4.8; // V93: faster movement (was 2.8)
-  const turnSpd=3.0; // V93: faster turning (was 2.5)
+  const spd=3.2; // V103: slower for comfort (was 4.8)
+  const turnSpd=1.8; // V103: much slower turning to reduce dizziness (was 3.0)
   let forward=0,turn=0,strafe=0;
   
   // Keyboard: W/Up=forward, S/Down=back, A/Left=turn left, D/Right=turn right
@@ -2147,8 +2186,11 @@ function updateMovement(dt){
   if(keys['s']||keys['ArrowDown'])forward-=1;
   if(keys['a']||keys['ArrowLeft'])turn-=1;
   if(keys['d']||keys['ArrowRight'])turn+=1;
+  // V103: Q/E for strafe (side-step without turning)
+  if(keys['q'])strafe-=1;
+  if(keys['e'])strafe+=1;
   
-  // Joystick: up=forward, left/right=turn, diagonal=forward+turn
+  // Joystick: up=forward, left/right=STRAFE (not turn, reduces dizziness), down=back
   if(G.joystick.active){
     const dx=G.joystick.cx-G.joystick.sx;
     const dy=G.joystick.cy-G.joystick.sy;
@@ -2157,14 +2199,30 @@ function updateMovement(dt){
       const nx=dx/mag, ny=dy/mag;
       // ny<0 (up) = forward, ny>0 (down) = backward
       forward+=-ny;
-      // nx<0 (left) = turn left, nx>0 (right) = turn right
-      turn+=nx;
+      // V103: nx left/right = STRAFE (side-step) instead of turn
+      strafe+=nx;
     }
   }
   
   // Apply turning
   if(Math.abs(turn)>0.01){
     G.pdir+=turn*turnSpd*dt;
+  }
+  
+  // V103: Apply strafe (side-step perpendicular to facing direction)
+  if(Math.abs(strafe)>0.01){
+    const strafeDir=G.pdir+Math.PI/2; // perpendicular
+    const mvX=Math.cos(strafeDir)*Math.sign(strafe);
+    const mvY=Math.sin(strafeDir)*Math.sign(strafe);
+    const moveAmt=Math.abs(strafe)*spd*dt*0.7; // slower strafe than forward
+    const margin=0.25;
+    const nx=G.px+mvX*moveAmt;
+    const ny=G.py+mvY*moveAmt;
+    if(!isWall(nx+mvX*margin,G.py))G.px=nx;
+    if(!isWall(G.px,ny+mvY*margin))G.py=ny;
+    G.stepTimer+=dt;
+    if(G.stepTimer>0.5){G.stepTimer=0;S.step()}
+    revealFog();
   }
   
   // Apply forward/backward movement
@@ -2285,13 +2343,15 @@ function checkEncounters(){
       return;
     }
   }
-  // V96: Shop NPC encounter
+  // V96: Shop NPC encounter — V103: edge-triggered (same as boss door)
+  // Only fires ONCE when walking INTO the shop area. Standing inside no longer re-opens shop.
   for(const sh of G.mapShops){
     const dx=sh.x+0.5-G.px,dy=sh.y+0.5-G.py;
     const d=Math.sqrt(dx*dx+dy*dy);
     if(d<1.0){
-      G.state='shop';S.bell();showMsg('欢迎光临地下商城!',60);
-      return;
+      if(!G.shopNear){G.shopNear=true;G.state='shop';S.bell();showMsg('欢迎光临地下商城!',60)}
+    }else if(d>1.8){
+      G.shopNear=false; // reset when far enough away
     }
   }
   // Boss encounter (V101: edge-triggered — fires ONCE when walking INTO the boss
@@ -2590,9 +2650,9 @@ function rTitle(t){
   dt('图鉴: '+(G.meta.seenMobs||[]).length+'/'+Object.keys(EDEF).length,W/2,H*.62,13,'#445');
   
   // Instructions
-  dt('摇杆: 上前进 左右转向 | 接近怪物触发战斗',W/2,H*.78,12,'#556');
-  dt('宝箱有惊喜 | Boss需要做菜投喂',W/2,H*.82,12,'#445');
-  dt('WASD: W前进/S后退/A左转/D右转 | R:重启',W/2,H*.86,11,'#334');
+  dt('摇杆: 上前进 左右侧移 | 接近怪物触发战斗',W/2,H*.78,12,'#556');
+  dt('宝箱有惊喜 | Boss可投喂招募',W/2,H*.82,12,'#445');
+  dt('WASD: 前后左右转 | Q/E侧移 | R:重启',W/2,H*.86,11,'#334');
 }
 
 // ---- Explore (first-person corridor) ----
@@ -3014,13 +3074,19 @@ function drawJoystick(){
     ctx.strokeStyle='rgba(120,90,50,.25)';ctx.lineWidth=2;
     ctx.beginPath();ctx.arc(jx,jy,jr,0,Math.PI*2);ctx.stroke();
     dt('移动',jx,jy-4,12,'#764','center','bold');
-    dt('↑前进',jx,jy+12,9,'#543','center');
+    dt('↑前进 ←→侧移',jx,jy+12,9,'#543','center');
   }
   
-  // Check touch in joystick area — circular zone around joystick center (V102: was mx<W*0.4 which overlapped cook button at x=120)
-  if(mc&&!G.joystick.active){
+  // V103: Joystick activation — only consume mc if NOT in an action button zone.
+  // Action buttons are at x≈W*0.32±38, y≈H-52..H-14. Check first.
+  // This prevents the joystick from eating the click meant for cook/eat buttons.
+  const actBtnLeft=W*0.32-40,actBtnRight=W*0.32+76+40;
+  const actBtnTop=H-38-14-80,actBtnBot=H-14;
+  const inActionZone=mx>=actBtnLeft&&mx<=actBtnRight&&my>=actBtnTop&&my<=actBtnBot;
+  
+  if(mc&&!G.joystick.active&&!inActionZone){
     const jdx=mx-jx,jdy=my-jy;
-    if(jdx*jdx+jdy*jdy<jr*jr*2.0){ // touch radius ~63px, well clear of action buttons at x>=120
+    if(jdx*jdx+jdy*jdy<jr*jr*2.0){ // touch radius ~63px
       G.joystick.active=true;G.joystick.sx=mx;G.joystick.sy=my;
       G.joystick.cx=mx;G.joystick.cy=my;mc=false;
     }
@@ -3455,55 +3521,61 @@ function rBossAsk(t){
   const g=ctx.createRadialGradient(W/2,H*.3,0,W/2,H*.3,W);g.addColorStop(0,'#1a1525');g.addColorStop(1,'#0a060a');
   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
   const bk=G.bossDishKey;const e=EDEF[bk];
-  if(e){const img=getImg(e.ico);if(img&&img.complete){ctx.drawImage(img,W/2-55,H*.1,110,110)}}
-  dt(e?e.n:'Boss',W/2,H*.3,18,'#fa0','center','bold');
-  dt('Boss已被击败!',W/2,H*.38,14,'#cfa');
-  dt('做出它的菜来开启下一层',W/2,H*.42,12,'#aaa');
-  // V96: Show if player has boss dish or can cook it
-  if(G.hasBossDish){
-    if(btn(W/2-80,H*.5,160,42,'投喂Boss!','#cfa')&&mc){S.clk();G.state='bossFeed'}
+  if(e){const img=getImg(e.ico);if(img&&img.complete){ctx.drawImage(img,W/2-55,H*.08,110,110)}}
+  dt(e?e.n:'Boss',W/2,H*.28,18,'#fa0','center','bold');
+  dt('Boss已被击败!',W/2,H*.35,14,'#cfa');
+  dt('你想要做什么？',W/2,H*.40,12,'#aaa');
+  
+  // V103: Three options per user design — 前往下一层 / 继续战斗 / 投喂招募
+  // Option 1: 前往下一层 (always available if not last floor)
+  if(G.floor+1<FLOORS.length){
+    if(btn(W/2-96,H*.50,192,42,'前往下一层','#cfa')&&mc){S.clk();enterFloor(G.floor+1)}
   }else{
-    dt(canCookBossDish()?'食材足够,去烹饪!':'需要更多食材',W/2,H*.5,11,canCookBossDish()?'#cfa':'#888');
-    if(canCookBossDish()&&btn(W/2-80,H*.55,160,38,'制作Boss菜','#fa0')&&mc){S.clk();cookBossDish();G.state='bossFeed'}
+    dt('已是最后一层!',W/2,H*.53,12,'#f84');
   }
-  // V101: 继续探索/再战Boss moved UP — right under the ingredient hint
-  // (previously at H*.85, too far from the info; now directly below 更多食材)
-  if(btn(W/2-96,H*.63,92,40,'继续探索','#888')&&mc){S.clk();G.state='explore'}
-  if(btn(W/2+4,H*.63,92,40,'再战Boss','#f44')&&mc){S.clk();startBossEncounter()}
+  
+  // Option 2: 继续战斗
+  if(btn(W/2-96,H*.58,192,42,'继续战斗','#f84')&&mc){S.clk();startBossEncounter()}
+  
+  // Option 3: 投喂招募 (only if has boss dish or can cook it)
+  if(G.hasBossDish){
+    if(btn(W/2-96,H*.66,192,42,'投喂招募Boss!','#fc4')&&mc){S.clk();feedBoss();G.state='bossFeed'}
+  }else if(canCookBossDish()){
+    if(btn(W/2-96,H*.66,192,38,'制作Boss菜并投喂','#fa0')&&mc){S.clk();cookBossDish();feedBoss();G.state='bossFeed'}
+  }else{
+    dt('投喂需要: '+(BOSS_DISH[G.bossDishKey]?BOSS_DISH[G.bossDishKey].n:'食材'),W/2,H*.69,11,'#888');
+  }
+  
+  // 继续探索本层
+  if(btn(W/2-60,H*.76,120,36,'留本层探索','#888')&&mc){S.clk();G.state='explore'}
 }
 
 function rBossFeed(t){
   const g=ctx.createRadialGradient(W/2,H*.3,0,W/2,H*.3,W);g.addColorStop(0,'#1a2a1a');g.addColorStop(1,'#0a060a');
   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
   const bk=G.bossDishKey;const e=EDEF[bk];
-  if(e){const img=getImg(e.ico);if(img&&img.complete){ctx.drawImage(img,W/2-55,H*.1,110,110)}}
-  dt(e?e.n:'',W/2,H*.3,18,'#cfa','center','bold');
-  dt('Boss对你的料理很满意!',W/2,H*.38,15,'#cfa');
-  dt('下一层入口已开启!',W/2,H*.43,13,'#fa0');
-  // V96: Per user design — feed boss to unlock next floor, can stay and grind
-  // First feed: unlock next floor. Second feed (if already has pet): recruit boss companion
-  if(!G.bossFed){
-    // First time feeding — unlock next floor, boss leaves but will wait
-    if(btn(W/2-80,H*.55,160,42,'开启下一层','#cfa')&&mc){S.clk();feedBoss();showMsg('下一层已开启! 可继续探索本层',90);G.state='explore'}
+  if(e){const img=getImg(e.ico);if(img&&img.complete){ctx.drawImage(img,W/2-55,H*.08,110,110)}}
+  dt(e?e.n:'',W/2,H*.28,18,'#cfa','center','bold');
+  dt('Boss对你的料理很满意!',W/2,H*.35,15,'#cfa');
+  dt('你可以招募它为同伴!',W/2,H*.40,13,'#fa0');
+  
+  // V103: Two paths — recruit boss or just go to next floor
+  if(!G.pet){
+    // No pet yet — can recruit
+    if(btn(W/2-96,H*.50,192,42,'招募Boss为同伴!','#cfa')&&mc){S.clk();tryRecruit();showMsg('Boss成为你的同伴!',60);G.state='explore'}
+    if(G.floor+1<FLOORS.length){
+      if(btn(W/2-96,H*.58,192,42,'前往下一层','#fc4')&&mc){S.clk();enterFloor(G.floor+1)}
+    }
   }else{
-    // Boss already fed (next floor unlocked). Now can recruit as companion
-    if(G.pet){
-      dt('你已有同伴: '+G.pet.n,W/2,H*.52,12,'#fa0');
-      dt('饥饿度: '+G.pet.hunger+'/'+G.pet.maxHunger,W/2,H*.56,11,'#fc4');
-      if(btn(W/2-80,H*.65,160,42,'前往下一层','#cfa')&&mc){S.clk();enterFloor(G.floor+1)}
-    }else{
-      dt('再次做菜可招募Boss为同伴!',W/2,H*.52,13,'#fa0');
-      dt('(战斗会增加饥饿度,需食物维系)',W/2,H*.56,11,'#888');
-      if(G.hasBossDish){
-        if(btn(W/2-150,H*.65,140,42,'招募Boss!','#cfa')&&mc){S.clk();tryRecruit();feedBoss();enterFloor(G.floor+1)}
-      }else{
-        dt(canCookBossDish()?'食材足够,去烹饪!':'需要食材再做菜',W/2,H*.65,11,canCookBossDish()?'#cfa':'#888');
-        if(canCookBossDish()&&btn(W/2-80,H*.7,160,38,'制作Boss菜','#fa0')&&mc){S.clk();cookBossDish()}
-      }
-      if(btn(W/2+10,H*.65,140,42,'直接通过','#888')&&mc){S.clk();feedBoss();enterFloor(G.floor+1)}
+    // Already have a pet
+    dt('当前同伴: '+G.pet.n,W/2,H*.50,12,'#fa0');
+    if(G.floor+1<FLOORS.length){
+      if(btn(W/2-96,H*.58,192,42,'前往下一层','#cfa')&&mc){S.clk();enterFloor(G.floor+1)}
     }
   }
-  if(btn(20,H*.9,90,32,'留本层','#888')&&mc){S.clk();G.state='explore'}
+  
+  // Continue exploring current floor
+  if(btn(W/2-60,H*.68,120,36,'留本层探索','#888')&&mc){S.clk();G.state='explore'}
 }
 
 // ---- Shop (V96) ----
@@ -3545,7 +3617,19 @@ function rShop(t){
       }
     }
   });
-  if(btn(W/2-60,H*.86,120,40,'离开商城','#888')&&mc){S.clk();G.state='explore'} // V102: moved up from H-56 to avoid bottom-edge touch dead zone
+  if(btn(W/2-60,H*.86,120,40,'离开商城','#888')&&mc){S.clk();G.state='explore';G.shopNear=true; // V103: keep shopNear=true so standing in shop area doesn't re-trigger
+    // Push player away from shop to prevent immediate re-entry
+    for(const sh of G.mapShops){
+      const dx=G.px-(sh.x+0.5),dy=G.py-(sh.y+0.5);
+      const d=Math.sqrt(dx*dx+dy*dy);
+      if(d<1.5&&d>0.01){
+        // Push player 2 tiles away from shop
+        G.px+=(dx/d)*2.0;G.py+=(dy/d)*2.0;
+        // Clamp to walkable tiles
+        if(isWall(G.px,G.py)){G.px=sh.x+0.5+2.0*(dx/d);G.py=sh.y+0.5+2.0*(dy/d)}
+      }
+    }
+  } // V102: moved up from H-56 to avoid bottom-edge touch dead zone
 }
 
 // ---- Codex/Death/Win ----
