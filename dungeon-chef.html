@@ -113,37 +113,45 @@ var _texReady=false;
 function _genTextures(){
   _setPct(20,_ldTips[1]); // 点燃火把...
 
-  // ---- WALL TEXTURE (128x128) ----
-  // Sewer brick: green-brown damp stone with moss, cracks, grime
+  // ---- WALL TEXTURE (128x128) — V102: cold purple-grey stone bricks ----
   var wCv=document.createElement('canvas'); wCv.width=128; wCv.height=128;
   var wc=wCv.getContext('2d');
-  // Base stone color
-  wc.fillStyle='#3a3025'; wc.fillRect(0,0,128,128);
-  // Brick pattern
-  for(var row=0;row<8;row++){
-    var yOff=row*16; var offset=(row%2)*32; // staggered bricks
+  // Base: cold purple-grey stone — V102b: brighter for visibility
+  wc.fillStyle='#3a3540'; wc.fillRect(0,0,128,128);
+  // Brick pattern — larger, rougher stones
+  for(var row=0;row<7;row++){
+    var yOff=row*18; var offset=(row%2)*36;
     for(var col=0;col<5;col++){
-      var xOff=col*32+offset-32;
-      // Brick face
-      var bv=30+Math.random()*20;
-      wc.fillStyle='rgb('+Math.floor(bv+15)+','+Math.floor(bv+8)+','+Math.floor(bv)+')';
-      wc.fillRect(xOff+2,yOff+2,28,12);
-      // Mortar line (dark)
-      wc.fillStyle='rgba(10,8,5,.8)';
-      wc.fillRect(xOff,yOff,32,2); // horizontal mortar
-      wc.fillRect(xOff,yOff,2,16); // vertical mortar
+      var xOff=col*36+offset-36;
+      var bv=48+Math.random()*22;
+      // Purple-grey brick: B>R for cold tone
+      var r=Math.floor(bv*0.82+Math.random()*6);
+      var g=Math.floor(bv*0.80+Math.random()*5);
+      var b=Math.floor(bv*1.05+Math.random()*10);
+      wc.fillStyle='rgb('+r+','+g+','+b+')';
+      wc.fillRect(xOff+2,yOff+2,32,14);
+      // Highlight top edge (catches torch light)
+      wc.fillStyle='rgba(95,90,105,0.25)';
+      wc.fillRect(xOff+2,yOff+2,32,2);
+      // Mortar line (dark purple-grey)
+      wc.fillStyle='rgba(14,12,18,.85)';
+      wc.fillRect(xOff,yOff,36,2);
+      wc.fillRect(xOff,yOff,2,18);
     }
   }
-  // Moss/damp patches
-  for(var mi=0;mi<40;mi++){
+  // Damp patches — dark purple-grey, NOT green
+  for(var mi=0;mi<35;mi++){
     var mx2=Math.random()*128, my2=Math.random()*128;
     var mr=2+Math.random()*6;
-    wc.fillStyle='rgba('+Math.floor(30+Math.random()*30)+','+Math.floor(50+Math.random()*40)+','+Math.floor(20+Math.random()*15)+','+(0.15+Math.random()*0.3).toFixed(2)+')';
+    var dampR=Math.floor(20+Math.random()*15);
+    var dampG=Math.floor(18+Math.random()*12);
+    var dampB=Math.floor(25+Math.random()*15);
+    wc.fillStyle='rgba('+dampR+','+dampG+','+dampB+','+(0.15+Math.random()*0.25).toFixed(2)+')';
     wc.beginPath(); wc.arc(mx2,my2,mr,0,Math.PI*2); wc.fill();
   }
-  // Cracks
-  for(var ci=0;ci<8;ci++){
-    wc.strokeStyle='rgba(5,3,2,'+(0.2+Math.random()*0.3).toFixed(2)+')';
+  // Cracks — dark
+  for(var ci=0;ci<10;ci++){
+    wc.strokeStyle='rgba(5,4,8,'+(0.2+Math.random()*0.3).toFixed(2)+')';
     wc.lineWidth=0.5+Math.random();
     wc.beginPath();
     var cx=Math.random()*128, cy=Math.random()*128;
@@ -151,97 +159,95 @@ function _genTextures(){
     for(var s=0;s<3;s++){cx+=Math.random()*12-6;cy+=Math.random()*8;wc.lineTo(cx,cy);}
     wc.stroke();
   }
-  // Grime streaks (vertical water stain)
+  // Grime streaks — dark purple-brown vertical water stain
   for(var gi=0;gi<5;gi++){
     var gx=Math.random()*128;
-    wc.fillStyle='rgba(15,12,8,.12)';
+    wc.fillStyle='rgba(10,8,14,.12)';
     wc.fillRect(gx,0,3+Math.random()*5,128);
   }
   _wallTex=wCv;
 
   _setPct(50,_ldTips[3]); // 布置鼠穴下水道...
 
-  // ---- FLOOR TEXTURE (128x128) ----
-  // Wet stone floor with puddles, moss, debris
+  // ---- FLOOR TEXTURE (128x128) — V102: dark grey stone slab + red-brown rubble ----
   var fCv=document.createElement('canvas'); fCv.width=128; fCv.height=128;
   var fc=fCv.getContext('2d');
-  // Base wet stone
-  fc.fillStyle='#2a2820'; fc.fillRect(0,0,128,128);
-  // Stone tiles (irregular rectangles)
-  for(var ti=0;ti<16;ti++){
-    var tx2=Math.random()*120, ty2=Math.random()*120;
-    var tw2=10+Math.random()*25, th2=8+Math.random()*18;
-    var tv=25+Math.random()*15;
-    fc.fillStyle='rgb('+Math.floor(tv+10)+','+Math.floor(tv+8)+','+Math.floor(tv+2)+')';
+  // Base dark grey stone
+  fc.fillStyle='#1e1d22'; fc.fillRect(0,0,128,128);
+  // Stone tiles — larger irregular slabs
+  for(var ti=0;ti<14;ti++){
+    var tx2=Math.random()*118, ty2=Math.random()*118;
+    var tw2=14+Math.random()*28, th2=10+Math.random()*20;
+    var tv=28+Math.random()*18;
+    var fr=Math.floor(tv*0.82+Math.random()*6);
+    var fg=Math.floor(tv*0.78+Math.random()*5);
+    var fb=Math.floor(tv*0.88+Math.random()*8);
+    fc.fillStyle='rgb('+fr+','+fg+','+fb+')';
     fc.fillRect(tx2,ty2,tw2,th2);
-    // Tile gap
-    fc.strokeStyle='rgba(8,6,4,.5)'; fc.lineWidth=1;
+    fc.strokeStyle='rgba(6,5,8,.55)'; fc.lineWidth=1;
     fc.strokeRect(tx2,ty2,tw2,th2);
   }
-  // Puddles (shiny wet spots)
-  for(var pi=0;pi<12;pi++){
+  // Puddles — dark cold grey-blue, not green
+  for(var pi=0;pi<10;pi++){
     var px2=Math.random()*128, py2=Math.random()*128;
     var pr=3+Math.random()*8;
-    fc.fillStyle='rgba('+Math.floor(20+Math.random()*15)+','+Math.floor(25+Math.random()*15)+','+Math.floor(18+Math.random()*10)+',0.4)';
+    fc.fillStyle='rgba('+Math.floor(15+Math.random()*10)+','+Math.floor(16+Math.random()*10)+','+Math.floor(22+Math.random()*12)+',0.4)';
     fc.beginPath(); fc.ellipse(px2,py2,pr,pr*0.6,0,0,Math.PI*2); fc.fill();
-    // Wet shine
-    fc.fillStyle='rgba(80,90,70,.08)';
+    fc.fillStyle='rgba(60,65,80,.08)';
     fc.beginPath(); fc.ellipse(px2-pr*0.2,py2-pr*0.2,pr*0.4,pr*0.3,0,0,Math.PI*2); fc.fill();
   }
-  // Moss spots
-  for(var mi2=0;mi2<25;mi2++){
-    var mmx=Math.random()*128, mmy=Math.random()*128;
-    fc.fillStyle='rgba('+Math.floor(35+Math.random()*25)+','+Math.floor(55+Math.random()*30)+','+Math.floor(20+Math.random()*15)+','+(0.2+Math.random()*0.35).toFixed(2)+')';
-    fc.beginPath(); fc.arc(mmx,mmy,1+Math.random()*4,0,Math.PI*2); fc.fill();
-  }
-  // Scattered debris dots
-  for(var di=0;di<30;di++){
-    fc.fillStyle='rgba('+(40+Math.floor(Math.random()*30))+','+Math.floor(25+Math.random()*20)+','+Math.floor(10+Math.random()*15)+',0.3)';
+  // Scattered red-brown rubble dots (not green moss)
+  for(var di=0;di<35;di++){
+    var rbr=Math.floor(45+Math.random()*25);
+    var rbg=Math.floor(28+Math.random()*15);
+    var rbb=Math.floor(18+Math.random()*10);
+    fc.fillStyle='rgba('+rbr+','+rbg+','+rbb+',0.3)';
     fc.fillRect(Math.random()*128,Math.random()*128,1+Math.random()*2,1+Math.random()*2);
   }
   _floorTex=fCv;
 
   _setPct(75,_ldTips[4]); // 唤醒地牢怪物...
 
-  // ---- CEILING TEXTURE (128x128) ----
-  // Dark vaulted ceiling with roots, pipes, stains
+  // ---- CEILING TEXTURE (128x128) — V102: natural dark rock vault ----
   var cCv=document.createElement('canvas'); cCv.width=128; cCv.height=128;
   var cc=cCv.getContext('2d');
-  // Base dark ceiling
-  cc.fillStyle='#1e1c18'; cc.fillRect(0,0,128,128);
-  // Stone slabs
-  for(var si=0;si<12;si++){
-    var sx2=Math.random()*120, sy2=Math.random()*120;
+  // Base: very dark purple-grey rock — V102b: brighter
+  cc.fillStyle='#1e1b24'; cc.fillRect(0,0,128,128);
+  // Rough rock slabs
+  for(var si=0;si<14;si++){
+    var sx2=Math.random()*118, sy2=Math.random()*118;
     var sw=15+Math.random()*30, sh=10+Math.random()*20;
-    var sv=18+Math.random()*12;
-    cc.fillStyle='rgb('+Math.floor(sv+8)+','+Math.floor(sv+6)+','+Math.floor(sv+2)+')';
+    var sv=28+Math.random()*14;
+    var sr=Math.floor(sv*0.78+Math.random()*5);
+    var sg=Math.floor(sv*0.76+Math.random()*4);
+    var sb=Math.floor(sv*0.98+Math.random()*8);
+    cc.fillStyle='rgb('+sr+','+sg+','+sb+')';
     cc.fillRect(sx2,sy2,sw,sh);
-    cc.strokeStyle='rgba(5,4,3,.4)'; cc.lineWidth=0.5;
+    cc.strokeStyle='rgba(5,4,8,.45)'; cc.lineWidth=0.5;
     cc.strokeRect(sx2,sy2,sw,sh);
   }
-  // Hanging roots/vines
-  for(var ri=0;ri<6;ri++){
+  // Dark hanging roots — desaturated brown, NOT green
+  for(var ri=0;ri<5;ri++){
     var rx=Math.random()*128;
-    cc.strokeStyle='rgba('+Math.floor(30+Math.random()*20)+','+Math.floor(40+Math.random()*20)+','+Math.floor(15+Math.random()*10)+',0.3)';
+    cc.strokeStyle='rgba(35,28,30,0.3)';
     cc.lineWidth=1+Math.random()*2;
     cc.beginPath(); cc.moveTo(rx,0);
     var ry2=0;
     for(var rv=0;rv<4;rv++){rx+=Math.random()*8-4;ry2+=10+Math.random()*15;cc.lineTo(rx,ry2);}
     cc.stroke();
   }
-  // Water stains (dark streaks from above)
+  // Water stains — dark cold streaks
   for(var wi=0;wi<8;wi++){
-    cc.fillStyle='rgba(10,12,8,'+(0.05+Math.random()*0.1).toFixed(2)+')';
+    cc.fillStyle='rgba(8,7,12,'+(0.05+Math.random()*0.1).toFixed(2)+')';
     var wx2=10+Math.random()*108;
     cc.fillRect(wx2,0,2+Math.random()*6,40+Math.random()*88);
   }
   // Rusted pipes (horizontal)
   for(var pi2=0;pi2<2;pi2++){
     var py3=20+Math.random()*80;
-    cc.fillStyle='rgba('+(60+Math.floor(Math.random()*30))+','+Math.floor(30+Math.random()*15)+','+Math.floor(10+Math.random()*10)+',0.5)';
+    cc.fillStyle='rgba('+(55+Math.floor(Math.random()*25))+','+Math.floor(28+Math.random()*15)+','+Math.floor(12+Math.random()*10)+',0.5)';
     cc.fillRect(0,py3,128,3+Math.random()*3);
-    // Pipe joints
-    cc.fillStyle='rgba(40,25,10,.4)';
+    cc.fillStyle='rgba(35,22,12,.4)';
     cc.fillRect(30+Math.random()*60,py3-1,8,6+Math.random()*3);
   }
   _ceilTex=cCv;
@@ -407,10 +413,10 @@ const COOKWARE_LIST=['rustPan','ironPot','copperPot','steelWok','mythrilPot']; /
 
 // V97: Floor tint lookup table (replaces 15-branch if-else for performance)
 const _FLOOR_TINTS=[
-  [1.08,1.12,0.92],[0.85,0.90,1.05],[1.15,1.05,0.80],[0.72,0.80,0.76],
-  [1.05,1.15,0.95],[0.88,0.92,0.88],[0.80,0.95,1.08],[1.12,0.98,0.72],
-  [0.65,0.70,0.65],[1.0,1.08,0.85],[0.92,0.82,0.95],[0.78,0.88,0.72],
-  [1.20,1.10,0.70],[0.60,0.65,0.72],[0.95,0.85,1.10]
+  [0.90,0.86,1.06],[0.85,0.88,1.08],[1.05,0.92,0.82],[0.78,0.82,0.98],
+  [0.88,0.85,1.08],[0.82,0.85,0.95],[0.95,0.88,1.10],[1.08,0.90,0.80],
+  [0.75,0.78,0.92],[0.92,0.88,1.02],[0.80,0.85,1.05],[0.85,0.82,0.96],
+  [1.12,0.88,0.75],[0.72,0.78,0.90],[0.88,0.85,1.08]
 ];
 
 // ---- Game State ----
@@ -654,8 +660,8 @@ function renderFP(t,isBattle){
   ctx.imageSmoothingEnabled=true;
   ctx.imageSmoothingQuality='high';
 
-  // V94: Dark warm-brown background, not pure black (sewer atmosphere)
-  ctx.fillStyle='#0A0806'; // V94: warm dark brown (was #050805)
+  // V102: Cold dark purple-grey background (was warm brown #0A0806)
+  ctx.fillStyle='#08070d';
   ctx.fillRect(0,0,W,H);
 
   const horizonY=Math.floor(H*0.42);
@@ -673,10 +679,10 @@ function renderFP(t,isBattle){
 
   if(hasTex){
     // Cache floor texture pixel data (V99: _floorTex is now a Canvas, use .width/.height directly)
-    if(!window._floorTexData||window._floorTexData.key!=='f99'){
+      if(!window._floorTexData||window._floorTexData.key!=='f102b'){
       const tc=_floorTex; // Already a canvas
       const tctx=tc.getContext('2d');
-      window._floorTexData={data:tctx.getImageData(0,0,tc.width,tc.height),w:tc.width,h:tc.height,key:'f99'};
+        window._floorTexData={data:tctx.getImageData(0,0,tc.width,tc.height),w:tc.width,h:tc.height,key:'f102b'};
     }
     const fData=window._floorTexData.data.data;
     const fW=window._floorTexData.w, fH=window._floorTexData.h;
@@ -723,10 +729,9 @@ function renderFP(t,isBattle){
         const warmth=Math.max(0, 1-rowDist/9); // V42: warmth extends further
         const coolT=1-warmth;
       const fBase=1.15*fogFactor; // V91: brighter floor (was 1.0)
-      const fWarmR=warmth*30, fWarmG=warmth*15; // V54b: less warm tint (was 55/28)
-      // V54e: Sewer color - suppress red/blue, boost green channel
-      // V92: Add cool blue tint for distant floor — atmospheric perspective
-        const fCoolR=coolT*4, fCoolG=coolT*20, fCoolB=coolT*6; // V54e2: stronger green tint
+      // V102: Warm orange torch light near, cold purple-grey far
+      const fWarmR=warmth*45, fWarmG=warmth*22; // V102: stronger warm orange (was 30/15)
+      const fCoolR=coolT*10, fCoolG=coolT*12, fCoolB=coolT*22; // V102: cold purple-blue tint (was green 4/20/6)
         const coolShift=Math.max(0,(rowDist-4)/10); // V92: cool blue for far floor
         const grayMix=0.30*desatT; // blend toward gray for distant floor
 
@@ -755,14 +760,14 @@ function renderFP(t,isBattle){
 
         if(tx4>=0&&tx4+3<fData.length){
           const fBoost=1.2;
-            let r=fData[tx4]*fBase*fBoost*0.92+fWarmR+fCoolR;
-            let g=fData[tx4+1]*fBase*fBoost*1.05+fWarmG+fCoolG;
-            let b=fData[tx4+2]*fBase*fBoost*0.88+fCoolB;
-            // V92: Cool blue shift for distant floor — atmospheric perspective
+            let r=fData[tx4]*fBase*fBoost*0.82+fWarmR+fCoolR; // V102b: less red (was 0.88)
+            let g=fData[tx4+1]*fBase*fBoost*0.90+fWarmG+fCoolG; // V102b: less green (was 0.96)
+            let b=fData[tx4+2]*fBase*fBoost*1.10+fCoolB; // V102b: more blue (was 1.02)
+            // V92: Cool purple shift for distant floor — atmospheric perspective
             if(coolShift>0.01){
-              r=r*(1-coolShift*0.3);
-              g=g*(1-coolShift*0.15);
-              b=b+coolShift*12;
+              r=r*(1-coolShift*0.28);
+              g=g*(1-coolShift*0.18);
+              b=b+coolShift*18;
             }
             // V97: Tint via lookup table (replaces 15-branch if-else for performance)
             const ftileX=Math.floor(wx*2), ftileY=Math.floor(wy*2);
@@ -792,10 +797,10 @@ function renderFP(t,isBattle){
     // V99: _ceilTex is now a Canvas, check .width instead of .naturalWidth
     if(_ceilTex && _ceilTex.width>0){
       // Cache ceiling texture pixel data (V99: Canvas, use directly)
-      if(!window._ceilTexData||window._ceilTexData.key!=='c99'){
+      if(!window._ceilTexData||window._ceilTexData.key!=='c102b'){
         const tc2=_ceilTex;
         const tctx2=tc2.getContext('2d');
-        window._ceilTexData={data:tctx2.getImageData(0,0,tc2.width,tc2.height),w:tc2.width,h:tc2.height,key:'c99'};
+        window._ceilTexData={data:tctx2.getImageData(0,0,tc2.width,tc2.height),w:tc2.width,h:tc2.height,key:'c102b'};
       }
       const cData=window._ceilTexData.data.data;
       const cW=window._ceilTexData.w, cH=window._ceilTexData.h;
@@ -844,14 +849,15 @@ function renderFP(t,isBattle){
           // V92: Cool blue shift for distant ceiling
           const ceilCoolShift=Math.max(0,(rowDist-4)/10);
           const cBase=1.65*fogFactor; // V94: much brighter ceiling (was 1.40)
-          const cWarmR=warmth*40, cWarmG=warmth*18; // V54b: less warm tint (was 65/32)
-          const cCoolR=coolT*6, cCoolG=coolT*22, cCoolB=coolT*8; // V54e2: stronger green tint
+          // V102b: Reduced warm tint on ceiling to let cold tone show (was 50/24)
+          const cWarmR=warmth*35, cWarmG=warmth*16;
+          const cCoolR=coolT*8, cCoolG=coolT*12, cCoolB=coolT*22; // V102: cold purple-blue (was green 6/22/8)
           // V54b: Reduced brightBoost
           const brightBoost=1.25; // V55: brighter ceiling (was 1.0)
           // V42: Less aggressive horizon fade — min 0.55 instead of 0.30
           const horizonFade=Math.max(0.55, Math.min(1, p/60)); // V94: more gradual horizon fade (was 0.70/p/50)
-          // V54e: Fog blend - dark green-brown for sewer tone
-          const fogBlendR=28, fogBlendG=24, fogBlendB=16; // V94: warm brown fog (was 22,28,20 green)
+          // V102: Fog blend - cold purple-grey (was warm brown 28/24/16)
+          const fogBlendR=16, fogBlendG=14, fogBlendB=22;
           const fogAmt=1-horizonFade;
 
           for(let rx=0;rx<crW;rx++){
@@ -878,14 +884,14 @@ function renderFP(t,isBattle){
             const idx=(ry*crW+rx)*4;
 
             if(tx4>=0&&tx4+3<cData.length){
-              // V55: Brighter sewer ceiling — keep green-brown tint but lift overall brightness
-              const texR=cData[tx4]*cBase*brightBoost*0.90+cWarmR*0.7+cCoolR; // V55: was 0.80
-              const texG=cData[tx4+1]*cBase*brightBoost*1.05+cWarmG*0.8+cCoolG; // V55: was 1.02
-              const texB=cData[tx4+2]*cBase*brightBoost*0.82+cCoolB; // V55: was 0.72
+              // V102: Cold purple-grey ceiling with warm torch bleed
+              const texR=cData[tx4]*cBase*brightBoost*0.80+cWarmR*0.7+cCoolR; // V102b: less red (was 0.86)
+              const texG=cData[tx4+1]*cBase*brightBoost*0.88+cWarmG*0.8+cCoolG; // V102b: less green (was 0.96)
+              const texB=cData[tx4+2]*cBase*brightBoost*1.08+cCoolB; // V102b: more blue (was 1.00)
               // V92: Cool blue shift for distant ceiling
-              let r=texR*(1-ceilCoolShift*0.25)*horizonFade+fogBlendR*fogAmt;
-              let g=texG*(1-ceilCoolShift*0.12)*horizonFade+fogBlendG*fogAmt;
-              let b=(texB+ceilCoolShift*10)*horizonFade+fogBlendB*fogAmt;
+              let r=texR*(1-ceilCoolShift*0.22)*horizonFade+fogBlendR*fogAmt;
+              let g=texG*(1-ceilCoolShift*0.14)*horizonFade+fogBlendG*fogAmt;
+              let b=(texB+ceilCoolShift*14)*horizonFade+fogBlendB*fogAmt;
               // V97: Reduced ceiling noise — cheaper calculation
               const cNoise=((rx+ry*5)%7)-3;
               cpixels[idx]=Math.max(0,Math.min(255,r+cNoise));
@@ -899,9 +905,9 @@ function renderFP(t,isBattle){
         ctx.drawImage(window._rCCV,0,0,crW,rCH,0,0,W,horizonY);
         // V55: Lighter arch vault shadow for visible ceiling structure
         const archGrad=ctx.createLinearGradient(0,0,0,horizonY);
-        archGrad.addColorStop(0,'rgba(5,8,6,0.25)'); // V55: lighter (was 0.45)
-        archGrad.addColorStop(0.3,"rgba(8,12,6,0.12)"); // V55: lighter (was 0.25)
-        archGrad.addColorStop(0.6,"rgba(12,16,8,0.05)"); // V55: lighter (was 0.10)
+        archGrad.addColorStop(0,'rgba(4,3,8,0.25)'); // V102: cold purple shadow (was green 5,8,6)
+        archGrad.addColorStop(0.3,"rgba(6,5,10,0.12)"); // V102: cold (was 8,12,6)
+        archGrad.addColorStop(0.6,"rgba(8,7,12,0.05)"); // V102: cold (was 12,16,8)
         archGrad.addColorStop(1,'rgba(0,0,0,0)');
         ctx.fillStyle=archGrad;ctx.fillRect(0,0,W,horizonY);
 
@@ -916,19 +922,19 @@ function renderFP(t,isBattle){
           const hLen=horizonY*(0.05+((hSeed*23)%7)*0.03)*hScale;
           const hTop=Math.min(horizonY-10,((hSeed*13)%(horizonY*0.3)));
           if(hTop+hLen>=horizonY)continue;
-          ctx.fillStyle=`rgba(40,30,20,${0.08+0.04*((hSeed*17)%5)*hScale})`;
+          ctx.fillStyle=`rgba(30,25,32,${0.08+0.04*((hSeed*17)%5)*hScale})`; // V102: cold brown-purple (was 40,30,20 warm)
           ctx.fillRect(hSx,hTop,Math.max(0.5,2*hScale),hLen);
           // Tip
           ctx.fillRect(hSx-1*hScale,hTop+hLen-1*hScale,4*hScale,2*hScale);
         }
       }
     }else{
-      // V54e: Sewer fallback - green-brown tones
+      // V102: Cold purple-grey fallback (was green-brown sewer)
       const ceilGrad=ctx.createLinearGradient(0,0,0,horizonY+20);
-      ceilGrad.addColorStop(0,'#040806');ceilGrad.addColorStop(.5,'#0a1208');ceilGrad.addColorStop(1,'#0e1810');
+      ceilGrad.addColorStop(0,'#060509');ceilGrad.addColorStop(.5,'#0a0810');ceilGrad.addColorStop(1,'#0e0c14');
       ctx.fillStyle=ceilGrad;ctx.fillRect(0,0,W,horizonY+20);
       const floorGrad=ctx.createLinearGradient(0,horizonY,0,H);
-      floorGrad.addColorStop(0,'#080c06');floorGrad.addColorStop(.25,'#101608');floorGrad.addColorStop(.55,'#181c0c');floorGrad.addColorStop(1,'#1c1e10');
+      floorGrad.addColorStop(0,'#08070d');floorGrad.addColorStop(.25,'#100e16');floorGrad.addColorStop(.55,'#161420');floorGrad.addColorStop(1,'#1a1822');
       ctx.fillStyle=floorGrad;ctx.fillRect(floorTop,0,W,H-floorTop);
     }
 
@@ -1002,38 +1008,38 @@ function renderFP(t,isBattle){
       // V95: Per-wall color tint — 24 variants for much stronger non-repetition (V98: normalize negative %)
       const tileTint=(((hitWX*13+hitWY*29+hitWX*hitWY*7+hitWX*hitWY*hitWX*3+hitWY*hitWY*5)%24)+24)%24;
       const tintColors=[
-        'rgba(35,20,8,0.15)',   // 0 warm brown
-        'rgba(5,12,8,0.14)',    // 1 dark green
-        'rgba(2,4,3,0.17)',     // 2 dark shadow
-        'rgba(48,24,10,0.14)',  // 3 extra warm
-        'rgba(6,8,16,0.15)',    // 4 wet blue-grey
-        'rgba(42,22,8,0.14)',   // 5 warm brown 2
-        'rgba(8,18,10,0.16)',   // 6 moss green
-        'rgba(25,10,4,0.15)',   // 7 rust orange
-        'rgba(12,6,18,0.13)',   // 8 dark purple-grey
-        'rgba(30,28,8,0.12)',   // 9 dusty olive
-        'rgba(4,12,14,0.16)',   // 10 cold wet blue
-        'rgba(38,16,12,0.13)',  // 11 dark red-brown
-        'rgba(10,22,10,0.15)',  // 12 deep forest green
-        'rgba(20,10,4,0.18)',   // 13 deep amber shadow
-        'rgba(6,14,18,0.14)',   // 14 cold stone blue
-        'rgba(28,20,6,0.12)',   // 15 pale straw
-        'rgba(45,30,12,0.11)',  // 16 warm clay
-        'rgba(3,8,12,0.18)',    // 17 deep wet
-        'rgba(50,35,15,0.10)',  // 18 light amber
-        'rgba(15,25,8,0.14)',   // 19 swamp green
-        'rgba(8,5,12,0.16)',    // 20 dark charcoal
-        'rgba(35,15,25,0.12)',  // 21 wine stain
-        'rgba(55,40,20,0.09)',  // 22 warm limestone
-        'rgba(10,16,22,0.13)',  // 23 slate blue
+        'rgba(8,6,16,0.15)',   // 0 cold purple shadow
+        'rgba(5,8,14,0.14)',   // 1 dark blue-grey
+        'rgba(2,2,5,0.17)',    // 2 deep shadow
+        'rgba(55,25,8,0.14)',  // 3 warm amber (torch-lit)
+        'rgba(6,8,18,0.15)',   // 4 wet blue-purple
+        'rgba(45,20,10,0.14)', // 5 warm rust
+        'rgba(10,12,20,0.16)', // 6 cold dark
+        'rgba(28,12,4,0.15)',  // 7 dim amber
+        'rgba(12,8,20,0.13)',  // 8 dark purple
+        'rgba(8,10,18,0.12)',  // 9 cold navy
+        'rgba(4,8,16,0.16)',   // 10 cold wet blue
+        'rgba(35,15,20,0.13)', // 11 dark wine
+        'rgba(12,14,20,0.15)', // 12 cold slate
+        'rgba(22,10,6,0.18)',  // 13 deep amber shadow
+        'rgba(8,10,18,0.14)',  // 14 cold stone
+        'rgba(10,12,16,0.12)', // 15 cold grey
+        'rgba(48,22,10,0.11)', // 16 warm clay (torch)
+        'rgba(5,6,12,0.18)',   // 17 deep cold wet
+        'rgba(50,25,12,0.10)', // 18 light amber
+        'rgba(10,14,20,0.14)', // 19 cold blue slate
+        'rgba(8,6,14,0.16)',   // 20 dark charcoal purple
+        'rgba(28,14,22,0.12)', // 21 wine stain
+        'rgba(52,28,14,0.09)', // 22 warm limestone
+        'rgba(8,12,22,0.13)',  // 23 slate blue
       ];
       ctx.fillStyle=tintColors[tileTint];
       ctx.fillRect(screenX,wallTop,colW,wallBot-wallTop);
 
       // V87: Stronger 3D depth shading — top brighter (ceiling light), bottom darker (shadow)
       const wallGrad78=ctx.createLinearGradient(screenX,wallTop,screenX,wallBot);
-      wallGrad78.addColorStop(0,'rgba(55,45,28,0.14)'); // V87: brighter top
-      wallGrad78.addColorStop(0.15,'rgba(20,15,8,0.06)');
+      wallGrad78.addColorStop(0,'rgba(50,48,65,0.14)'); // V102: cold purple-grey top (was warm 55,45,28)
+      wallGrad78.addColorStop(0.15,'rgba(15,14,20,0.06)'); // V102: cold
       wallGrad78.addColorStop(0.3,'rgba(0,0,0,0)');
       wallGrad78.addColorStop(0.7,'rgba(0,0,0,0)');
       wallGrad78.addColorStop(0.85,'rgba(0,0,0,0.10)');
@@ -1055,32 +1061,32 @@ function renderFP(t,isBattle){
       const warmth81=Math.max(0, 1-corrected/7);
       const coolness81=Math.max(0, (corrected-3)/8);
       if(dimAlpha81>0.01){
-        // V87: Desaturating overlay — grey-green fog, not just darkness
+        // V102: Desaturating overlay — cold grey-purple fog (was grey-green 12,16,12)
         const desatAmount=Math.min(0.35,(1-dim81)*0.40);
-        ctx.fillStyle=`rgba(12,16,12,${dimAlpha81})`;
+        ctx.fillStyle=`rgba(14,12,18,${dimAlpha81})`;
         ctx.fillRect(screenX,wallTop,colW,wallBot-wallTop);
         // V87: Desaturation wash — removes color from distant walls
         if(desatAmount>0.05){
-          ctx.fillStyle=`rgba(18,20,18,${desatAmount*0.6})`;
+          ctx.fillStyle=`rgba(18,18,22,${desatAmount*0.6})`; // V102: cold grey
           ctx.fillRect(screenX,wallTop,colW,wallBot-wallTop);
         }
       }
-      // V92: Warm overlay on near walls
+      // V102: Warm orange overlay on near walls — subtle (was 140,75,18 / 0.12)
       if(warmth81>0.1&&corrected<5){
-        ctx.fillStyle=`rgba(120,70,20,${warmth81*0.10})`;
+        ctx.fillStyle=`rgba(110,55,12,${warmth81*0.08})`;
         ctx.fillRect(screenX,wallTop,colW,wallBot-wallTop);
       }
-      // V92: Cool blue-grey overlay on far walls — atmospheric perspective
+      // V102: Cold purple overlay on far walls (was cool blue-grey 10,20,35)
       if(coolness81>0.05&&corrected>4){
-        ctx.fillStyle=`rgba(10,20,35,${coolness81*0.18})`;
+        ctx.fillStyle=`rgba(12,14,28,${coolness81*0.18})`;
         ctx.fillRect(screenX,wallTop,colW,wallBot-wallTop);
       }
 
-      // V87: Warm torch light on near walls — stronger, with distance falloff
+      // V102: Warm torch light on near walls — moderate, lets cold stone show through
       if(warmth>0.08){
-        const wR=Math.floor(warmth*65);
-        const wG=Math.floor(warmth*30);
-        ctx.fillStyle=`rgba(${wR},${wG},0,${warmth*0.16})`;
+        const wR=Math.floor(warmth*55); // V102: reduced from 80
+        const wG=Math.floor(warmth*22); // V102: reduced from 35
+        ctx.fillStyle=`rgba(${wR},${wG},0,${warmth*0.12})`; // V102: reduced alpha from 0.20
         ctx.fillRect(screenX,wallTop,colW,wallBot-wallTop);
         // V87: Subtle specular highlight on near walls (brick edge shine)
         if(warmth>0.5&&corrected<3){
@@ -1093,30 +1099,31 @@ function renderFP(t,isBattle){
     }else{
       // V55: Fallback wall — also needs wetHeight for post-wall overlay
       var wetHeight=(wallBot-wallTop)*0.60;
-      const baseR=100,baseG=110,baseB=85; // V54f: green-brown fallback (was purple 140,115,155)
-      const r2=Math.floor(baseR*dim*shade+warmth*30);
-      const g2=Math.floor(baseG*dim*shade+warmth*15);
-      const b2=Math.floor(baseB*dim*shade+(1-warmth)*20);
+      // V102: Fallback wall — cold purple-grey (was green-brown 100,110,85)
+      const baseR=85,baseG=82,baseB=100;
+      const r2=Math.min(255,Math.floor(baseR*dim*shade+warmth*40));
+      const g2=Math.min(255,Math.floor(baseG*dim*shade+warmth*18));
+      const b2=Math.min(255,Math.floor(baseB*dim*shade+(1-warmth)*15));
       ctx.fillStyle=`rgb(${r2},${g2},${b2})`;
       ctx.fillRect(screenX,wallTop,colW,wallBot-wallTop);
     }
   }
 
-  // V79: Post-wall sewer dampness — single full-screen gradient overlay
+  // V102: Post-wall cold dampness — purple-grey gradient (was green 8,14,10 → 15,30,18)
   const sewerDampGrad=ctx.createLinearGradient(0,horizonY,0,H*0.75);
-  sewerDampGrad.addColorStop(0,"rgba(8,14,10,0)");
-  sewerDampGrad.addColorStop(0.3,"rgba(10,18,12,0.05)");
-  sewerDampGrad.addColorStop(0.7,"rgba(12,24,16,0.12)");
-  sewerDampGrad.addColorStop(1,"rgba(15,30,18,0.18)");
+  sewerDampGrad.addColorStop(0,"rgba(6,6,10,0)");
+  sewerDampGrad.addColorStop(0.3,"rgba(8,8,14,0.05)");
+  sewerDampGrad.addColorStop(0.7,"rgba(10,10,18,0.12)");
+  sewerDampGrad.addColorStop(1,"rgba(14,12,22,0.18)");
   ctx.fillStyle=sewerDampGrad;
   ctx.fillRect(0,horizonY,W,H*0.75-horizonY);
 
-  // V79: Wet sheen on lower walls — single subtle gradient
+  // V102: Wet sheen on lower walls — cold blue-purple (was green 15,30,20 → 35,55,35)
   const wetSheen=ctx.createLinearGradient(0,horizonY+(H-horizonY)*0.5,0,H);
   wetSheen.addColorStop(0,'rgba(0,0,0,0)');
-  wetSheen.addColorStop(0.3,'rgba(15,30,20,0.04)');
-  wetSheen.addColorStop(0.7,'rgba(25,45,30,0.08)');
-  wetSheen.addColorStop(1,'rgba(35,55,35,0.12)');
+  wetSheen.addColorStop(0.3,'rgba(12,14,22,0.04)');
+  wetSheen.addColorStop(0.7,'rgba(20,22,35,0.08)');
+  wetSheen.addColorStop(1,'rgba(28,30,45,0.12)');
   ctx.fillStyle=wetSheen;
   ctx.fillRect(0,horizonY,W,H-horizonY);
 
@@ -1186,15 +1193,15 @@ function renderFP(t,isBattle){
   ctx.save();
   ctx.globalCompositeOperation='source-over'; // V54g: was 'screen' — screen mode causes brightness accumulation with multiple torches
 
-  // V80: Player-centered warm glow — softer edges, more natural attenuation
+  // V80: Player-centered warm glow — V102c: stronger contrast
   const torchFlicker=0.82+Math.sin(t*0.012)*0.10+Math.sin(t*0.035)*0.06+Math.sin(t*0.08)*0.04+Math.sin(t*0.15)*0.03;
-  const pGlowR=W*0.48*torchFlicker; // V80: wider radius for softer falloff
+  const pGlowR=W*0.42*torchFlicker;
   const pGlow=ctx.createRadialGradient(W/2,H*0.52,0,W/2,H*0.52,pGlowR);
-  pGlow.addColorStop(0,`rgba(255,190,80,${0.42*torchFlicker})`);
-  pGlow.addColorStop(0.08,`rgba(248,165,55,${0.32*torchFlicker})`);
-  pGlow.addColorStop(0.22,`rgba(200,100,35,${0.18*torchFlicker})`); // V80: softer
-  pGlow.addColorStop(0.45,`rgba(100,45,12,${0.08*torchFlicker})`); // V80: extended
-  pGlow.addColorStop(0.70,`rgba(30,12,3,${0.03*torchFlicker})`); // V80: extended
+  pGlow.addColorStop(0,`rgba(255,170,50,${0.40*torchFlicker})`); // V102c: warmer orange (was 255,180,70 / 0.32)
+  pGlow.addColorStop(0.08,`rgba(240,140,30,${0.28*torchFlicker})`); // V102c: (was 245,155,45 / 0.22)
+  pGlow.addColorStop(0.22,`rgba(180,75,15,${0.14*torchFlicker})`); // V102c: (was 190,90,25 / 0.12)
+  pGlow.addColorStop(0.45,`rgba(80,30,5,${0.05*torchFlicker})`); // V102c: (was 90,38,8 / 0.05)
+  pGlow.addColorStop(0.70,`rgba(20,6,2,${0.02*torchFlicker})`);
   pGlow.addColorStop(1,'rgba(0,0,0,0)');
   ctx.fillStyle=pGlow;
   ctx.fillRect(0,0,W,H);
@@ -1405,27 +1412,27 @@ function renderFP(t,isBattle){
     } // end if(showRight)
   } // end for(td)
 
-  // V94: Sewer fog - warm brown-green tones (not cold blue)
+  // V102: Cold purple-grey fog (was warm brown-green 12,10,6 → 32,24,16)
   const fogGrad=ctx.createLinearGradient(0,horizonY-140,0,horizonY+180);
-  fogGrad.addColorStop(0,'rgba(12,10,6,0)'); // V94: warm (was 14,20,14)
-  fogGrad.addColorStop(0.15,'rgba(18,14,8,0.08)');
-  fogGrad.addColorStop(0.30,'rgba(24,18,12,0.15)');
-  fogGrad.addColorStop(0.45,'rgba(30,22,14,0.22)');
-  fogGrad.addColorStop(0.55,'rgba(32,24,16,0.25)');
-  fogGrad.addColorStop(0.70,'rgba(26,20,12,0.18)');
-  fogGrad.addColorStop(0.85,'rgba(18,14,8,0.08)');
-  fogGrad.addColorStop(1,'rgba(12,10,6,0)');
+  fogGrad.addColorStop(0,'rgba(8,8,14,0)');
+  fogGrad.addColorStop(0.15,'rgba(12,12,18,0.08)');
+  fogGrad.addColorStop(0.30,'rgba(16,16,24,0.15)');
+  fogGrad.addColorStop(0.45,'rgba(20,20,28,0.22)');
+  fogGrad.addColorStop(0.55,'rgba(22,22,30,0.25)');
+  fogGrad.addColorStop(0.70,'rgba(18,18,24,0.18)');
+  fogGrad.addColorStop(0.85,'rgba(12,12,16,0.08)');
+  fogGrad.addColorStop(1,'rgba(8,8,14,0)');
   ctx.fillStyle=fogGrad;
   ctx.fillRect(0,horizonY-140,W,320);
-  // V94: Sewer horizon glow - warm amber-brown
+  // V102: Horizon glow — warm amber at vanishing point (was warm brown 24,18,12 → 48,34,20)
   const hzFog=ctx.createLinearGradient(0,horizonY-60,0,horizonY+90);
-  hzFog.addColorStop(0,'rgba(24,18,12,0)'); // V94: warm (was 28,35,22)
-  hzFog.addColorStop(0.15,'rgba(34,24,16,0.10)');
-  hzFog.addColorStop(0.35,'rgba(42,30,18,0.18)');
-  hzFog.addColorStop(0.50,'rgba(48,34,20,0.22)');
-  hzFog.addColorStop(0.65,'rgba(36,26,16,0.15)');
-  hzFog.addColorStop(0.80,'rgba(20,16,10,0.06)');
-  hzFog.addColorStop(1,'rgba(12,10,6,0)');
+  hzFog.addColorStop(0,'rgba(20,16,12,0)'); // V102: faint warm amber
+  hzFog.addColorStop(0.15,'rgba(35,22,14,0.10)');
+  hzFog.addColorStop(0.35,'rgba(48,28,16,0.18)');
+  hzFog.addColorStop(0.50,'rgba(55,32,18,0.22)');
+  hzFog.addColorStop(0.65,'rgba(38,24,14,0.15)');
+  hzFog.addColorStop(0.80,'rgba(18,16,12,0.06)');
+  hzFog.addColorStop(1,'rgba(8,8,14,0)');
   ctx.fillStyle=hzFog;
   ctx.fillRect(0,horizonY-60,W,150);
 
@@ -1455,25 +1462,25 @@ function renderFP(t,isBattle){
 
   // [V54m: hand shapes moved to after vignette — see below]
 
-  // V94: Far fog — 3-stage gradient, warm brown-green not pure black
+  // V102c: Far fog — cold purple-grey, stronger for more depth
   const farFog=ctx.createLinearGradient(0,horizonY-80,0,horizonY+150);
-  farFog.addColorStop(0,'rgba(12,10,6,0.55)'); // V94: warmer brown (was blue-grey 10,14,18,0.65)
-  farFog.addColorStop(0.08,'rgba(10,9,6,0.42)');
-  farFog.addColorStop(0.20,'rgba(8,8,5,0.28)'); // V94: gradual
-  farFog.addColorStop(0.35,'rgba(6,6,4,0.18)');
-  farFog.addColorStop(0.55,'rgba(5,5,3,0.10)');
-  farFog.addColorStop(0.80,'rgba(4,4,3,0.04)');
+  farFog.addColorStop(0,'rgba(6,6,12,0.65)'); // V102c: stronger (was 0.55)
+  farFog.addColorStop(0.08,'rgba(5,5,10,0.50)'); // V102c: (was 0.42)
+  farFog.addColorStop(0.20,'rgba(4,4,8,0.32)'); // V102c: (was 0.28)
+  farFog.addColorStop(0.35,'rgba(3,3,6,0.20)');
+  farFog.addColorStop(0.55,'rgba(3,3,5,0.10)');
+  farFog.addColorStop(0.80,'rgba(2,2,4,0.04)');
   farFog.addColorStop(1,'rgba(0,0,0,0)');
   ctx.fillStyle=farFog;
   ctx.fillRect(0,horizonY-80,W,230);
 
-  // V77: Vignette — stronger edge darkening for focus and depth
-  const vig=ctx.createRadialGradient(W/2,H*0.48,W*0.15,W/2,H*0.48,W*0.88); // V77: tighter
+  // V102: Vignette — stronger tunnel-vision darkening (was 0.08/0.22/0.42/0.70)
+  const vig=ctx.createRadialGradient(W/2,H*0.48,W*0.12,W/2,H*0.48,W*0.85);
   vig.addColorStop(0,'rgba(0,0,0,0)');
-  vig.addColorStop(0.30,'rgba(0,0,0,0.08)'); // V77: earlier falloff
-  vig.addColorStop(0.55,'rgba(0,0,0,0.22)'); // V77: stronger
-  vig.addColorStop(0.78,'rgba(0,0,0,0.42)'); // V77: stronger
-  vig.addColorStop(1,'rgba(0,0,0,0.70)'); // V77: much darker edge
+  vig.addColorStop(0.25,'rgba(0,0,0,0.10)');
+  vig.addColorStop(0.50,'rgba(0,0,0,0.28)');
+  vig.addColorStop(0.75,'rgba(0,0,0,0.50)');
+  vig.addColorStop(1,'rgba(0,0,0,0.82)'); // V102: much darker edge
   ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
 
   // ---- V54m: PLAYER'S HANDS — extracted to drawHands(), called after UI in rExplore/rBattle ----
@@ -1552,8 +1559,8 @@ function drawFloorScatter(t,dir,fov,horizonY,maxDist){
       const groundY=horizonY+(H-horizonY)*Math.min(0.95,scale*0.85); // V41: closer to screen bottom for near props
       const dim=Math.max(0.60,Math.min(1,14/(dist+0.5))); // V54b: dimmer scatter (was 18)
         if(scatterType===0){
-          // Pebble — small round stone, V42: brighter
-          ctx.fillStyle=`rgba(${115+(sSeed&31)},${100+((sSeed>>2)&21)},${85+((sSeed>>4)&21)},${0.85*dim})`;
+          // Pebble — small round stone, V102: cold grey (was warm brown 115,100,85)
+          ctx.fillStyle=`rgba(${95+(sSeed&31)},${92+((sSeed>>2)&21)},${105+((sSeed>>4)&21)},${0.85*dim})`;
           const pr=sz*0.12+((sSeed>>6)&7)*sz*0.025; // V52: bigger pebbles (was 0.08/0.018)
           ctx.beginPath();ctx.arc(sx,groundY,pr,0,Math.PI*2);ctx.fill();
           // Pebble shadow
@@ -1583,11 +1590,11 @@ function drawFloorScatter(t,dir,fov,horizonY,maxDist){
           ctx.lineTo(sx+Math.cos(ca)*cl*0.8,groundY);
           ctx.stroke();
         }else if(scatterType===3){
-          // Small moss patch — V42: brighter
-          ctx.fillStyle=`rgba(60,110,40,${0.50*dim})`;
-          const mr=sz*0.12; // V52: bigger moss (was 0.08)
+          // V102: Dark dry moss — not bright green (was 60,110,40)
+          ctx.fillStyle=`rgba(45,48,35,${0.50*dim})`;
+          const mr=sz*0.12;
           ctx.beginPath();ctx.ellipse(sx,groundY,mr,mr*0.4,0,0,Math.PI*2);ctx.fill();
-          ctx.fillStyle=`rgba(75,120,50,${0.40*dim})`; // V42: brighter
+          ctx.fillStyle=`rgba(55,50,38,${0.40*dim})`;
           ctx.beginPath();ctx.ellipse(sx-mr*0.3,groundY,mr*0.6,mr*0.25,0,0,Math.PI*2);ctx.fill();
         }else if(scatterType===4){
           // Ash/soot patch — V42: more visible
@@ -1658,15 +1665,15 @@ function drawCeilingProps(t,dir,fov,horizonY,maxDist){
         ctx.lineWidth=Math.max(0.6,sz*0.008);
         ctx.beginPath();ctx.moveTo(sx-sz*0.005,ceilY);ctx.lineTo(sx-sz*0.005,ceilY+hangLen);ctx.stroke();
       }else if(ceilType===1){
-        // Stalactite — V42: brighter, more visible
-        ctx.fillStyle=`rgba(85,72,78,${0.85*dim})`;
+        // Stalactite — V102: cold grey-purple (was 85,72,78)
+        ctx.fillStyle=`rgba(70,68,82,${0.85*dim})`;
         ctx.beginPath();
         ctx.moveTo(sx-sz*0.025,ceilY);
         ctx.lineTo(sx+sz*0.025,ceilY);
         ctx.lineTo(sx+sz*0.008,ceilY+hangLen);
         ctx.closePath();ctx.fill();
-        // Stalactite highlight — V42: brighter
-        ctx.fillStyle=`rgba(120,105,110,${0.60*dim})`;
+        // Stalactite highlight — V102: cold
+        ctx.fillStyle=`rgba(100,96,115,${0.60*dim})`;
         ctx.beginPath();
         ctx.moveTo(sx-sz*0.018,ceilY);
         ctx.lineTo(sx-sz*0.005,ceilY);
@@ -1674,8 +1681,8 @@ function drawCeilingProps(t,dir,fov,horizonY,maxDist){
         ctx.closePath();ctx.fill();
         // V55: Removed water drip at stalactite tip — was appearing as floating blue dot at distance
       }else if(ceilType===2){
-        // Hanging vine — V42: brighter, thicker
-        ctx.strokeStyle=`rgba(50,80,35,${0.75*dim})`;
+        // V102: Hanging root — dead brown, not green vine (was 50,80,35)
+        ctx.strokeStyle=`rgba(45,38,32,${0.75*dim})`;
         ctx.lineWidth=Math.max(1.0,sz*0.015);
         const numSegs=5;
         ctx.beginPath();
@@ -1686,11 +1693,11 @@ function drawCeilingProps(t,dir,fov,horizonY,maxDist){
           ctx.lineTo(vx,vy);
         }
         ctx.stroke();
-        // Vine leaves — small green dots
+        // Root tendrils — dark
         for(let vi=1;vi<=numSegs;vi+=2){
           const vx=sx+Math.sin(t*0.002+vi+seed*0.1)*sz*0.015;
           const vy=ceilY+vi*hangLen/numSegs;
-          ctx.fillStyle=`rgba(65,105,40,${0.70*dim})`; // V42: brighter leaves
+          ctx.fillStyle=`rgba(55,45,38,${0.70*dim})`; // V102: brown not green
           ctx.beginPath();ctx.ellipse(vx,vy,sz*0.012,sz*0.008,0,0,Math.PI*2);ctx.fill();
         }
       }else{
@@ -1765,9 +1772,9 @@ function drawCorridorProps(t,dir,fov,horizonY,maxDist){
       const dim=Math.max(0.85,Math.min(1,20/(dist+0.5))); // V54e: brighter (was 16)
 
       if(propType<2){
-        // V54: Algae stain — dark green slimy patch on floor
+        // V102: Algae stain — dark cold stain (was green 35,60,25)
         const algSz=sz*0.16;
-        const algShades=[[35,60,25,0.55],[45,75,30,0.45],[25,50,18,0.5]];
+        const algShades=[[22,22,28,0.55],[28,28,35,0.45],[18,18,24,0.5]];
         for(let mi=0;mi<5;mi++){
           const ma=seed*(mi+1)*0.5;
           const mr2=algSz*(0.2+((seed>>mi)&3)*0.12);
@@ -1777,8 +1784,8 @@ function drawCorridorProps(t,dir,fov,horizonY,maxDist){
           ctx.fillStyle=`rgba(${ms[0]},${ms[1]},${ms[2]},${ms[3]*dim})`;
           ctx.beginPath();ctx.ellipse(mx2,my2,mr2,mr2*0.28,ma,0,Math.PI*2);ctx.fill();
         }
-        // Slimy highlight
-        ctx.fillStyle=`rgba(90,130,60,${0.2*dim*flicker})`;
+        // Slimy highlight — cold blue-grey (was green 90,130,60)
+        ctx.fillStyle=`rgba(70,75,90,${0.2*dim*flicker})`;
         ctx.beginPath();ctx.ellipse(sx-algSz*0.2,groundY-algSz*0.05,algSz*0.3,algSz*0.08,0.3,0,Math.PI*2);ctx.fill();
       }else if(propType<4){
         // V54: Puddle — dark water with faint reflection (V54l: lower alpha)
@@ -1789,8 +1796,8 @@ function drawCorridorProps(t,dir,fov,horizonY,maxDist){
         // Reflection highlight
         ctx.fillStyle=`rgba(50,60,70,${0.15*dim*flicker})`; // V54l: was 0.3
         ctx.beginPath();ctx.ellipse(sx-pSz*0.2,groundY-pSz*0.06,pSz*0.5,pSz*0.1,0,0,Math.PI*2);ctx.fill();
-        // Edge wetness
-        ctx.strokeStyle=`rgba(40,50,40,${0.4*dim})`;
+        // Edge wetness — V102: cold (was green 40,50,40)
+        ctx.strokeStyle=`rgba(35,38,50,${0.4*dim})`;
         ctx.lineWidth=Math.max(0.5,pSz*0.06);
         ctx.beginPath();ctx.ellipse(sx,groundY,pSz,pSz*0.25,0,0,Math.PI*2);ctx.stroke();
       }else if(propType<6){
@@ -1868,9 +1875,9 @@ function drawCorridorProps(t,dir,fov,horizonY,maxDist){
           ctx.beginPath();ctx.ellipse(px3,py3,dSz,dSz*0.5,pa,0,Math.PI*2);ctx.fill();
         }
       }else if(propType<14){
-        // V54: Moss patch — green growth (sewer-appropriate)
+        // V102: Dark stain patch — was green moss, now cold dark (was 30,55,20 / 40,70,25 / 50,85,30 / 60,100,35)
         const mossSz=sz*0.14;
-        const mossShades=[[30,55,20,0.5],[40,70,25,0.4],[50,85,30,0.35],[60,100,35,0.3]];
+        const mossShades=[[20,20,26,0.5],[26,26,32,0.4],[30,30,38,0.35],[24,24,30,0.3]];
         for(let mi=0;mi<5;mi++){
           const ma=seed*(mi+1)*0.5;
           const mr2=mossSz*(0.2+((seed>>mi)&3)*0.12);
@@ -1898,16 +1905,16 @@ function drawCorridorProps(t,dir,fov,horizonY,maxDist){
         ctx.beginPath();ctx.ellipse(sx,groundY,brSz*1.2,brSz*0.2,0,0,Math.PI*2);ctx.fill();
         } // V55: only render brick at dist<2.5
       }else if(propType<18){
-        // V54: Sludge pool — dark greenish-black viscous liquid (V54l: lower alpha)
+        // V102: Sludge pool — dark cold viscous liquid (was green 15,25,12)
         const slSz=sz*0.13;
-        ctx.fillStyle=`rgba(15,25,12,${0.5*dim})`; // V54l: was 0.75
+        ctx.fillStyle=`rgba(12,12,18,${0.5*dim})`;
         ctx.beginPath();ctx.ellipse(sx,groundY,slSz,slSz*0.22,0,0,Math.PI*2);ctx.fill();
-        // Surface sheen
-        ctx.fillStyle=`rgba(30,45,20,${0.15*dim*flicker})`; // V54l: was 0.3
+        // Surface sheen — cold (was green 30,45,20)
+        ctx.fillStyle=`rgba(22,24,32,${0.15*dim*flicker})`;
         ctx.beginPath();ctx.ellipse(sx-slSz*0.15,groundY-slSz*0.04,slSz*0.5,slSz*0.08,0,0,Math.PI*2);ctx.fill();
         // Bubble
         if(flicker>0.6){
-          ctx.fillStyle=`rgba(60,80,35,${0.2*dim})`;
+          ctx.fillStyle=`rgba(40,42,52,${0.2*dim})`; // V102: cold (was green 60,80,35)
           ctx.beginPath();ctx.arc(sx+slSz*0.3,groundY-slSz*0.06,slSz*0.1,0,Math.PI*2);ctx.fill();
         }
       }else{
@@ -3010,10 +3017,13 @@ function drawJoystick(){
     dt('↑前进',jx,jy+12,9,'#543','center');
   }
   
-  // Check touch in joystick area (left half of screen, bottom 40%)
-  if(mc&&!G.joystick.active&&mx<W*0.4&&my>H*0.5){
-    G.joystick.active=true;G.joystick.sx=mx;G.joystick.sy=my;
-    G.joystick.cx=mx;G.joystick.cy=my;mc=false;
+  // Check touch in joystick area — circular zone around joystick center (V102: was mx<W*0.4 which overlapped cook button at x=120)
+  if(mc&&!G.joystick.active){
+    const jdx=mx-jx,jdy=my-jy;
+    if(jdx*jdx+jdy*jdy<jr*jr*2.0){ // touch radius ~63px, well clear of action buttons at x>=120
+      G.joystick.active=true;G.joystick.sx=mx;G.joystick.sy=my;
+      G.joystick.cx=mx;G.joystick.cy=my;mc=false;
+    }
   }
   if(G.joystick.active){
     G.joystick.cx=mx;G.joystick.cy=my;
@@ -3525,7 +3535,7 @@ function rShop(t){
     dt(item.price+'金',W-60,iy+20,12,bought?'#444':(canAfford?'#fa0':'#f44'),'right','bold');
     dt(bought?'已购':(item.stock>1?'x'+item.stock:''),W-60,iy+38,9,'#666','right');
     if(hv&&mc&&canAfford&&!bought){
-      S.clk();G.player.gold-=item.price;item._bought=true;item.stock--;
+      mc=false;S.clk();G.player.gold-=item.price;item._bought=true;item.stock--;
       if(item.isCookware){
         G.cookware=item.key;showMsg('装备: '+name+'!',90);
       }else if(item.isSeason){
@@ -3535,7 +3545,7 @@ function rShop(t){
       }
     }
   });
-  if(btn(W/2-60,H-56,120,40,'离开商城','#888')&&mc){S.clk();G.state='explore'}
+  if(btn(W/2-60,H*.86,120,40,'离开商城','#888')&&mc){S.clk();G.state='explore'} // V102: moved up from H-56 to avoid bottom-edge touch dead zone
 }
 
 // ---- Codex/Death/Win ----
