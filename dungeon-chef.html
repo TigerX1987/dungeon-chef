@@ -2144,34 +2144,73 @@ function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
         dt(ed?ed.n:'Boss',sx,bY-bsz*0.05,12*scale+4,G.bossDefeated?'#fa0':'#f44','center','bold');
       }
     }else if(e.type==='shop'){
-      // V103: Shop NPC — detailed Q-cute hooded merchant with cart
+      // V106: Shop NPC — enhanced Q-cute hooded merchant with detailed cart
       const shY=horizonY-sz*0.4+bob;
       ctx.globalAlpha=0.6+dim*0.4;
-      // Cart/stall body
-      ctx.fillStyle='#3a2518';
+      // Shadow under cart
+      ctx.fillStyle='rgba(0,0,0,0.3)';
+      ctx.beginPath();ctx.ellipse(sx,shY+sz*0.5,sz*0.45,sz*0.08,0,0,Math.PI*2);ctx.fill();
+      // Cart/stall body — wooden texture effect
+      const cartG=ctx.createLinearGradient(sx-sz*0.35,shY,sx+sz*0.35,shY);
+      cartG.addColorStop(0,'#3a2010');cartG.addColorStop(0.5,'#5a3a20');cartG.addColorStop(1,'#3a2010');
+      ctx.fillStyle=cartG;
       ctx.fillRect(sx-sz*0.35,shY+sz*0.15,sz*0.7,sz*0.25);
+      // Plank lines on cart
+      ctx.strokeStyle='#2a1808';ctx.lineWidth=1;
+      for(let plank=0;plank<3;plank++){
+        const py=shY+sz*0.18+plank*sz*0.07;
+        ctx.beginPath();ctx.moveTo(sx-sz*0.33,py);ctx.lineTo(sx+sz*0.33,py);ctx.stroke();
+      }
+      // Cart top shelf
       ctx.fillStyle='#4a3520';
       ctx.fillRect(sx-sz*0.30,shY+sz*0.10,sz*0.6,sz*0.08);
-      // Cart wheels
+      ctx.fillStyle='#5a4530';
+      ctx.fillRect(sx-sz*0.28,shY+sz*0.10,sz*0.56,sz*0.04);
+      // Cart wheels with spokes
       ctx.strokeStyle='#2a1a0a';ctx.lineWidth=Math.max(1,sz*0.02);
-      ctx.beginPath();ctx.arc(sx-sz*0.2,shY+sz*0.42,sz*0.06,0,Math.PI*2);ctx.stroke();
-      ctx.beginPath();ctx.arc(sx+sz*0.2,shY+sz*0.42,sz*0.06,0,Math.PI*2);ctx.stroke();
-      // Body — hooded robe
-      ctx.fillStyle='#3a2a4a';
+      ctx.fillStyle='#3a2a1a';
+      for(const wx of [-sz*0.2,sz*0.2]){
+        ctx.beginPath();ctx.arc(wx,shY+sz*0.42,sz*0.06,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle='#2a1a0a';ctx.beginPath();ctx.arc(wx,shY+sz*0.42,sz*0.06,0,Math.PI*2);ctx.stroke();
+        // Spokes
+        ctx.strokeStyle='#4a3a2a';ctx.lineWidth=1;
+        for(let a=0;a<4;a++){const ang=a*Math.PI/2;ctx.beginPath();ctx.moveTo(wx,shY+sz*0.42);ctx.lineTo(wx+Math.cos(ang)*sz*0.05,shY+sz*0.42+Math.sin(ang)*sz*0.05);ctx.stroke()}
+      }
+      // Body — hooded robe with gradient
+      const robeG=ctx.createLinearGradient(sx-sz*0.05,shY-sz*0.2,sx-sz*0.05,shY+sz*0.3);
+      robeG.addColorStop(0,'#4a3a5a');robeG.addColorStop(0.5,'#3a2a4a');robeG.addColorStop(1,'#2a1a3a');
+      ctx.fillStyle=robeG;
       ctx.beginPath();ctx.ellipse(sx-sz*0.05,shY+sz*0.1,sz*0.18,sz*0.28,0,0,Math.PI*2);ctx.fill();
-      // Head/hood
+      // Head/hood — rounded
       ctx.fillStyle='#4a3a5a';
       ctx.beginPath();ctx.arc(sx-sz*0.05,shY-sz*0.12,sz*0.14,0,Math.PI*2);ctx.fill();
-      // Hood point
+      // Hood point — pointed hat
       ctx.fillStyle='#5a4a6a';
-      ctx.beginPath();ctx.moveTo(sx-sz*0.05-sz*0.12,shY-sz*0.08);ctx.lineTo(sx-sz*0.05,shY-sz*0.3);ctx.lineTo(sx-sz*0.05+sz*0.12,shY-sz*0.08);ctx.fill();
-      // Eyes (tiny dots)
+      ctx.beginPath();ctx.moveTo(sx-sz*0.05-sz*0.12,shY-sz*0.08);ctx.lineTo(sx-sz*0.05,shY-sz*0.35);ctx.lineTo(sx-sz*0.05+sz*0.12,shY-sz*0.08);ctx.fill();
+      // Hood brim shadow
+      ctx.fillStyle='#2a1a3a';
+      ctx.beginPath();ctx.ellipse(sx-sz*0.05,shY-sz*0.12,sz*0.14,sz*0.04,0,0,Math.PI);ctx.fill();
+      // Eyes (glowing dots)
       ctx.fillStyle='#ffd';
       ctx.beginPath();ctx.arc(sx-sz*0.09,shY-sz*0.14,sz*0.025,0,Math.PI*2);ctx.fill();
       ctx.beginPath();ctx.arc(sx-sz*0.01,shY-sz*0.14,sz*0.025,0,Math.PI*2);ctx.fill();
-      // Lantern on cart
+      // Eye glow
+      ctx.save();ctx.globalCompositeOperation='lighter';
+      const eG=ctx.createRadialGradient(sx-sz*0.09,shY-sz*0.14,0,sx-sz*0.09,shY-sz*0.14,sz*0.06);
+      eG.addColorStop(0,'rgba(255,255,200,0.3)');eG.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=eG;ctx.fillRect(sx-sz*0.15,shY-sz*0.2,sz*0.12,sz*0.1);
+      const eG2=ctx.createRadialGradient(sx-sz*0.01,shY-sz*0.14,0,sx-sz*0.01,shY-sz*0.14,sz*0.06);
+      eG2.addColorStop(0,'rgba(255,255,200,0.3)');eG2.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=eG2;ctx.fillRect(sx-sz*0.07,shY-sz*0.2,sz*0.12,sz*0.1);
+      ctx.restore();
+      // Lantern on cart — glowing
       ctx.fillStyle='#ffc';
       ctx.beginPath();ctx.arc(sx+sz*0.25,shY+sz*0.05,sz*0.05,0,Math.PI*2);ctx.fill();
+      // Lantern cage
+      ctx.strokeStyle='#654';ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(sx+sz*0.25,shY+sz*0.05,sz*0.05,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(sx+sz*0.20,shY+sz*0.05);ctx.lineTo(sx+sz*0.30,shY+sz*0.05);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(sx+sz*0.25,shY+sz*0.00);ctx.lineTo(sx+sz*0.25,shY+sz*0.10);ctx.stroke();
       // Lantern glow
       ctx.save();ctx.globalCompositeOperation='lighter';
       const lG=ctx.createRadialGradient(sx+sz*0.25,shY+sz*0.05,0,sx+sz*0.25,shY+sz*0.05,sz*0.5);
@@ -2179,13 +2218,21 @@ function drawCorridorEntities(t,dir,fov,horizonY,maxDist){
       lG.addColorStop(1,'rgba(0,0,0,0)');
       ctx.fillStyle=lG;ctx.fillRect(sx-sz*0.3,shY-sz*0.2,sz*0.8,sz*0.6);
       ctx.restore();
-      // Goods on cart (bottles/potions)
-      const goods=['#8c4','#c84','#48c'];
-      for(let gi=0;gi<3;gi++){
+      // Goods on cart (bottles/potions) — more detailed
+      const goods=['#8c4','#c84','#48c','#cc4'];
+      for(let gi=0;gi<4;gi++){
+        const gx=sx-sz*0.22+gi*sz*0.13;
         ctx.fillStyle=goods[gi];
-        const gx=sx-sz*0.2+gi*sz*0.15;
-        ctx.beginPath();ctx.ellipse(gx,shY+sz*0.08,sz*0.04,sz*0.06,0,0,Math.PI*2);ctx.fill();
-        ctx.fillStyle='#664';ctx.fillRect(gx-sz*0.02,shY+sz*0.02,sz*0.04,sz*0.02);
+        // Bottle body
+        const bw=sz*0.035,bh=sz*0.065;
+        ctx.beginPath();ctx.ellipse(gx,shY+sz*0.09,bw,bh,0,0,Math.PI*2);ctx.fill();
+        // Bottle neck
+        ctx.fillStyle='#664';ctx.fillRect(gx-bw*0.3,shY+sz*0.03,bw*0.6,bh*0.3);
+        // Bottle cap
+        ctx.fillStyle='#876';ctx.fillRect(gx-bw*0.4,shY+sz*0.01,bw*0.8,bh*0.12);
+        // Shine
+        ctx.fillStyle='rgba(255,255,255,0.2)';
+        ctx.beginPath();ctx.ellipse(gx-bw*0.3,shY+sz*0.09-bh*0.2,bw*0.2,bh*0.3,0,0,Math.PI*2);ctx.fill();
       }
       ctx.globalAlpha=1;
       if(e.dist<4)dt('商人',sx,shY-sz*0.35,9*scale+5,'#8cf','center','bold');
@@ -2210,7 +2257,7 @@ function updateMovement(dt){
   if(keys['q'])strafe-=1;
   if(keys['e'])strafe+=1;
   
-  // Joystick: up=forward, left/right=STRAFE (not turn, reduces dizziness), down=back
+  // Joystick: up=forward, down=back, left=turn left, right=turn right
   if(G.joystick.active){
     const dx=G.joystick.cx-G.joystick.sx;
     const dy=G.joystick.cy-G.joystick.sy;
@@ -2219,8 +2266,8 @@ function updateMovement(dt){
       const nx=dx/mag, ny=dy/mag;
       // ny<0 (up) = forward, ny>0 (down) = backward
       forward+=-ny;
-      // V103: nx left/right = STRAFE (side-step) instead of turn
-      strafe+=nx;
+      // nx left/right = turn (change facing direction)
+      turn+=nx;
     }
   }
   
@@ -3347,7 +3394,7 @@ function drawIco(type,cx,cy,sz,col){
 function rCook(t){
   ctx.setTransform(1,0,0,1,0,0);
 
-  // Campfire & pot first-person view
+  // V106: Enhanced campfire & pot first-person view
   const g=ctx.createRadialGradient(W/2,H*0.55,0,W/2,H*0.55,W*0.8);
   g.addColorStop(0,'#1a0a05');
   g.addColorStop(0.5,'#0d0503');
@@ -3355,7 +3402,7 @@ function rCook(t){
   ctx.fillStyle=g;
   ctx.fillRect(0,0,W,H);
 
-  // Dungeon corridor dim background
+  // Dungeon corridor dim background — stone wall texture
   ctx.fillStyle='#0a0608';
   ctx.beginPath();
   ctx.moveTo(0,0);
@@ -3364,6 +3411,10 @@ function rCook(t){
   ctx.lineTo(W*0.25,H*0.35);
   ctx.closePath();
   ctx.fill();
+  // Stone brick lines on wall
+  ctx.strokeStyle='rgba(60,40,30,0.15)';ctx.lineWidth=1;
+  for(let bx=0;bx<W;bx+=40){ctx.beginPath();ctx.moveTo(bx,0);ctx.lineTo(bx*0.75+W*0.125,H*0.35);ctx.stroke()}
+  for(let by=0;by<H*0.35;by+=20){const t=by/(H*0.35);ctx.beginPath();ctx.moveTo(W*0.25*t,by);ctx.lineTo(W-W*0.25*t,by);ctx.stroke()}
 
   // Fire glow — flickering
   const flicker=0.8+Math.sin(t*.012)*0.2+Math.sin(t*.03)*0.1;
@@ -3374,23 +3425,39 @@ function rCook(t){
   ctx.fillStyle=fg;
   ctx.fillRect(0,0,W,H);
 
-  // Stone fire pit base
-  ctx.fillStyle='#2a2218';
-  ctx.beginPath();
-  ctx.ellipse(W/2,H*0.58,70,18,0,0,Math.PI*2);
-  ctx.fill();
+  // Stone fire pit base — individual stones
+  const stoneColors=['#2a2218','#3a3028','#1a1810','#4a3a2a','#2a2018'];
+  for(let si=0;si<12;si++){
+    const sa=si/12*Math.PI*2;const sr=55+Math.random()*25;
+    ctx.fillStyle=stoneColors[si%stoneColors.length];
+    ctx.beginPath();ctx.ellipse(W/2+Math.cos(sa)*sr*0.5,H*0.58+Math.sin(sa)*12,sr*0.15,6+Math.random()*4,sa,0,Math.PI*2);ctx.fill();
+  }
+  // Inner pit darker
   ctx.fillStyle='#1a1410';
   ctx.beginPath();
   ctx.ellipse(W/2,H*0.58,55,14,0,0,Math.PI*2);
   ctx.fill();
+  // Embers
+  for(let ei=0;ei<8;ei++){
+    const ex=W/2+Math.sin(t*.005+ei*2.1)*40;const ey=H*0.58+Math.cos(t*.004+ei*1.7)*8;
+    ctx.fillStyle=`rgba(255,${120+Math.random()*80},20,${0.3+0.2*Math.sin(t*.01+ei)})`;
+    ctx.beginPath();ctx.arc(ex,ey,2+Math.random()*2,0,Math.PI*2);ctx.fill();
+  }
 
-  // Pot (big cauldron)
-  ctx.fillStyle='#3a3028';
+  // Pot (big cauldron) — metallic gradient
+  const potG=ctx.createLinearGradient(W/2-45,H*0.35,W/2+45,H*0.55);
+  potG.addColorStop(0,'#5a4a3a');potG.addColorStop(0.3,'#3a3028');potG.addColorStop(0.7,'#2a2218');potG.addColorStop(1,'#1a1410');
+  ctx.fillStyle=potG;
   ctx.beginPath();
   ctx.ellipse(W/2,H*0.48,45,38,0,0,Math.PI*2);
   ctx.fill();
-  // Pot rim
-  ctx.fillStyle='#4a4035';
+  // Pot highlight
+  ctx.fillStyle='rgba(255,255,255,0.08)';
+  ctx.beginPath();ctx.ellipse(W/2-15,H*0.42,15,20,-0.3,0,Math.PI*2);ctx.fill();
+  // Pot rim — metallic
+  const rimG=ctx.createLinearGradient(W/2-48,H*0.41,W/2+48,H*0.41);
+  rimG.addColorStop(0,'#5a4a3a');rimG.addColorStop(0.5,'#7a6a5a');rimG.addColorStop(1,'#5a4a3a');
+  ctx.fillStyle=rimG;
   ctx.beginPath();
   ctx.ellipse(W/2,H*0.41,48,12,0,0,Math.PI*2);
   ctx.fill();
@@ -3398,13 +3465,13 @@ function rCook(t){
   ctx.beginPath();
   ctx.ellipse(W/2,H*0.41,42,9,0,0,Math.PI*2);
   ctx.fill();
-  // Pot liquid surface
+  // Pot liquid surface — bubbling
   ctx.fillStyle=`rgba(${100+30*flicker},${60+20*flicker},20,0.8)`;
   ctx.beginPath();
   ctx.ellipse(W/2,H*0.41,38,8,0,0,Math.PI*2);
   ctx.fill();
   // Bubbles
-  for(let i=0;i<4;i++){
+  for(let i=0;i<6;i++){
     const bx=W/2+Math.sin(t*.002+i*1.5)*20;
     const by=H*0.41+Math.cos(t*.003+i*1.2)*4;
     ctx.fillStyle=`rgba(255,${180+Math.sin(t*.01+i)*40},60,${0.3+0.2*Math.sin(t*.008+i*2)})`;
@@ -3413,22 +3480,29 @@ function rCook(t){
     ctx.fill();
   }
 
-  // Fire flames
-  for(let i=0;i<3;i++){
-    const fx=W/2-15+i*15;
-    const fh=30+Math.sin(t*.015+i)*10;
+  // Fire flames — layered
+  for(let i=0;i<5;i++){
+    const fx=W/2-20+i*10;
+    const fh=25+Math.sin(t*.015+i*1.3)*12+Math.sin(t*.007+i*2.1)*6;
     const fy=H*0.52;
     const fgr=ctx.createLinearGradient(fx,fy-fh,fx,fy);
-    fgr.addColorStop(0,`rgba(255,200,80,${0.6*flicker})`);
-    fgr.addColorStop(0.5,`rgba(255,100,20,${0.5*flicker})`);
+    fgr.addColorStop(0,`rgba(255,240,180,${0.8*flicker})`);
+    fgr.addColorStop(0.3,`rgba(255,180,60,${0.7*flicker})`);
+    fgr.addColorStop(0.6,`rgba(255,100,20,${0.5*flicker})`);
     fgr.addColorStop(1,'rgba(100,20,0,0)');
     ctx.fillStyle=fgr;
     ctx.beginPath();
-    ctx.moveTo(fx-8,fy);
-    ctx.quadraticCurveTo(fx,fy-fh*0.5,fx,fy-fh);
-    ctx.quadraticCurveTo(fx+8,fy-fh*0.5,fx+8,fy);
+    ctx.moveTo(fx-6,fy);
+    ctx.quadraticCurveTo(fx-3,fy-fh*0.4,fx,fy-fh);
+    ctx.quadraticCurveTo(fx+3,fy-fh*0.4,fx+6,fy);
     ctx.closePath();
     ctx.fill();
+  }
+  // Sparks
+  for(let si=0;si<3;si++){
+    const sx=W/2+Math.sin(t*.02+si*5)*15;const sy=H*0.45+Math.sin(t*.03+si*3)*20;
+    ctx.fillStyle=`rgba(255,200,100,${0.3+0.2*Math.sin(t*.05+si)})`;
+    ctx.beginPath();ctx.arc(sx,sy,1.5,0,Math.PI*2);ctx.fill();
   }
 
   // Title
@@ -3446,9 +3520,27 @@ function rCook(t){
       const sx2=(W-(Math.min(G.ings.length,4)*iw+3*gap))/2;
       const x=sx2+col*(iw+gap),y=95+row*(ih+gap);
       const hv=hitBtn(x,y,iw,ih);
-      rr(x,y,iw,ih,6,hv?'#332':'#1a1a1a',RARE_COL[ing.r]||'#666');
-      dt(ing.n,x+iw/2,y+22,10,'#ccc','center','bold');
-      dt('+'+ing.dish.h+'HP',x+iw/2,y+40,9,'#888');
+      // V106: Enhanced ingredient card with gradient background
+      const ingG=ctx.createLinearGradient(x,y,x,y+ih);
+      ingG.addColorStop(0,hv?'#443':'#2a2a1a');ingG.addColorStop(1,hv?'#332':'#1a1a0a');
+      rr(x,y,iw,ih,6,ingG,RARE_COL[ing.r]||'#666');
+      // Rarity dot
+      ctx.fillStyle=RARE_COL[ing.r]||'#666';
+      ctx.beginPath();ctx.arc(x+10,y+10,4,0,Math.PI*2);ctx.fill();
+      // Ingredient icon (small simple shape based on type)
+      ctx.fillStyle='#8a8a7a';
+      if(ing.n.includes('肉')||ing.n.includes('Meat')||ing.n.includes('鼠')){
+        ctx.beginPath();ctx.arc(x+iw/2,y+20,8,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#aa6a5a';ctx.beginPath();ctx.arc(x+iw/2,y+20,6,0,Math.PI*2);ctx.fill();
+      }else if(ing.n.includes('翅')||ing.n.includes('Wing')){
+        ctx.beginPath();ctx.moveTo(x+iw/2-8,y+18);ctx.lineTo(x+iw/2+8,y+12);ctx.lineTo(x+iw/2+6,y+26);ctx.closePath();ctx.fill();
+      }else if(ing.n.includes('Jelly')||ing.n.includes('胶')||ing.n.includes('史莱姆')){
+        ctx.fillStyle='#5a8a5a';ctx.beginPath();ctx.arc(x+iw/2,y+20,7,0,Math.PI*2);ctx.fill();
+      }else{
+        ctx.fillStyle='#6a7a5a';ctx.beginPath();ctx.arc(x+iw/2,y+20,6,0,Math.PI*2);ctx.fill();
+      }
+      dt(ing.n,x+iw/2,y+38,10,'#ccc','center','bold');
+      dt('+'+ing.dish.h+'HP',x+iw/2,y+50,9,'#888');
       if(hv&&mc){S.clk();selIng(i)}
     });
     if(btn(W/2-50,H-58,100,36,'取消','#888')&&mc){S.clk();G.cook=null;G.state=G.prevState||'explore'}
@@ -3568,7 +3660,7 @@ function rBossStory(t){
     dt('菜谱: '+bd.n,W/2,H*.56,16,'#cfa','center','bold');
     const parts=[];for(const ing in bd.needs)parts.push(ING[ing].n+' x'+bd.needs[ing]);
     dt(parts.join('  '),W/2,H*.6,12,'#fa0')}
-  if(btn(W/2-80,H*.75,160,42,'返回探索','#cfa')&&mc){S.clk();G.state='explore'}
+  if(btn(W/2-80,H*.75,160,42,'查看选项','#cfa')&&mc){S.clk();G.state='bossAsk'}
 }
 
 function rBossAsk(t){
@@ -3591,13 +3683,22 @@ function rBossAsk(t){
   // Option 2: 继续战斗
   if(btn(W/2-96,H*.58,192,42,'继续战斗','#f84')&&mc){S.clk();startBossEncounter()}
   
-  // Option 3: 投喂招募 (only if has boss dish or can cook it)
-  if(G.hasBossDish){
-    if(btn(W/2-96,H*.66,192,42,'投喂招募Boss!','#fc4')&&mc){S.clk();feedBoss();G.state='bossFeed'}
-  }else if(canCookBossDish()){
-    if(btn(W/2-96,H*.66,192,38,'制作Boss菜并投喂','#fa0')&&mc){S.clk();cookBossDish();feedBoss();G.state='bossFeed'}
-  }else{
-    dt('投喂需要: '+(BOSS_DISH[G.bossDishKey]?BOSS_DISH[G.bossDishKey].n:'食材'),W/2,H*.69,11,'#888');
+  // Option 3: 投喂招募 — always show the button, gray when lacking ingredients
+  const bd=BOSS_DISH[G.bossDishKey];
+  if(bd){
+    const canFeed=G.hasBossDish||canCookBossDish();
+    const btnCol=G.hasBossDish?'#fc4':(canCookBossDish()?'#fa0':'#666');
+    const lbl=G.hasBossDish?'投喂招募Boss!':'制作Boss菜并投喂';
+    if(btn(W/2-96,H*.66,192,38,lbl,btnCol)&&mc&&canFeed){S.clk();if(G.hasBossDish){feedBoss();G.state='bossFeed'}else{cookBossDish();feedBoss();G.state='bossFeed'}}
+    // Show ingredient status below button
+    if(!G.hasBossDish){
+      const needParts=[];for(const ing in bd.needs){
+        const have=G.ings.filter(i=>i===ing).length;
+        const need=bd.needs[ing];
+        needParts.push(ING[ing].n+' '+(have>=need?(''+have+'/'+need):(''+have+'/'+need)));
+      }
+      dt('需要: '+needParts.join('  ')+'  → 可打怪收集',W/2,H*.715,10,'#888');
+    }
   }
   
   // 继续探索本层
@@ -3632,10 +3733,13 @@ function rBossFeed(t){
   if(btn(W/2-60,H*.68,120,36,'留本层探索','#888')&&mc){S.clk();G.state='explore'}
 }
 
-// ---- Shop (V96) ----
+// ---- Shop (V106) ----
 function rShop(t){
   const g=ctx.createRadialGradient(W/2,H*.3,0,W/2,H*.3,W);g.addColorStop(0,'#1a1a25');g.addColorStop(1,'#0a060a');
   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // Decorative border
+  ctx.strokeStyle='rgba(200,170,80,0.15)';ctx.lineWidth=2;
+  ctx.strokeRect(8,8,W-16,H-16);
   dt('地下商城',W/2,30,22,'#fc4','center','bold');
   dt('金币: '+G.player.gold,W/2,54,14,'#fa0');
   // Find nearest shop
