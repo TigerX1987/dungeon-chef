@@ -338,6 +338,26 @@ const CARDS={
 const SD=['strike','strike','strike','strike','strike','defend','defend','defend','defend','flurry','bstep','focus'];
 const REWARD_P=['strike2','defend2','cleave','flurry','bstep','flame','riposte','poisonStab','whirlwind','fortify','execute','focus'];
 
+// V105: Card upgrade system — 2 same cards + gold → +1/+2/+3
+// Upgradeable base cards and their upgrade cost
+const UPGRADEABLE=['strike','defend','strike2','defend2','flurry','bstep','cleave','flame','riposte','poisonStab','whirlwind','fortify','execute','focus'];
+const UPGRADE_COST=[15,30,50]; // cost for +1, +2, +3 [待测试]
+const UPGRADE_BONUS={atk:3,def:2}; // bonus per level: atk +3 dmg, def +2 armor [待测试]
+
+// Parse card ID like "strike+2" → {base:'strike', lv:2}
+function parseCardId(id){
+  const parts=id.split('+');
+  return{base:parts[0],lv:parts[1]?parseInt(parts[1]):0};
+}
+// Get effective card info with upgrade bonus applied
+function getCardInfo(id){
+  const p=parseCardId(id);
+  const base=CARDS[p.base];if(!base)return null;
+  if(p.lv===0)return base;
+  const bonus=base.t==='atk'?UPGRADE_BONUS.atk*p.lv:UPGRADE_BONUS.def*p.lv;
+  return{...base,v:base.v+bonus,d:base.d+' +'+p.lv,n:base.n+(p.lv>0?'+'+p.lv:'')};
+}
+
 const SEASONS={salt:{n:'盐',col:'#eee',eff:'治疗+3'},pepper:{n:'胡椒',col:'#a52',eff:'灼烧2'},sugar:{n:'糖',col:'#ff8',eff:'回血5'},oil:{n:'油',col:'#fd4',eff:'溅射'}};
 
 const EDEF={
@@ -2442,7 +2462,7 @@ function addLog(m){G.log=(G.log||[]).slice(-2);G.log.push(m)}
 
 function playCard(hi,ei){
   if(G.turn!=='p'||G.state!=='battle')return;
-  const id=G.hand[hi];if(!id)return;const c=CARDS[id];if(!c)return;
+  const id=G.hand[hi];if(!id)return;const c=getCardInfo(id);if(!c)return;
   if(G.player.energy<c.c)return;
   G.player.energy-=c.c;S.play();
   if(c.t==='atk'){
@@ -2475,7 +2495,10 @@ function dmgEnemy(e,amt,baseAtk){
 function onKill(e){
   // V97: Combine all drops into one message to avoid showMsg overwrite
   const msgs=[];
-  if(e.drop)msgs.push('掉落: '+ING[e.drop].n);
+  if(e.drop){
+    if(G.ings.length<MAX_INGS){G.ings.push(e.drop);msgs.push('获得: '+ING[e.drop].n)}
+    else msgs.push('背包满! '+ING[e.drop].n+' 丢弃');
+  }
   if(!e.boss&&Math.random()<.25){const s=pick(Object.keys(SEASONS));G.seasons.push(s);msgs.push('调味料: '+SEASONS[s].n)}
   const goldAmt=e.boss?ri(20,40):ri(5,10);
   G.player.gold+=goldAmt;
@@ -2483,6 +2506,8 @@ function onKill(e){
   showMsg(msgs.join(' | '),90);
   if(e.boss){
     G.bossDefeated=true;G.lastWasBoss=true;G.lastBossKey=e.key;
+    // V105: Boss drops its ingredient too (for replay cooking)
+    if(e.drop&&G.ings.length<MAX_INGS){G.ings.push(e.drop)}
     if(!G.meta.seenBoss.includes(e.key))G.meta.seenBoss.push(e.key);
     S.bell();if(!G.meta.seenRecipes.includes(e.drop))G.meta.seenRecipes.push(e.drop);save();
   }
@@ -2591,6 +2616,14 @@ function eatDish(){
   const d=G.dishes.shift();const heal=Math.min(MAX_HEAL,d.h);
   G.player.hp=Math.min(G.player.maxHp,G.player.hp+heal);S.eat();fT(W*.3,H*.4,'+'+heal,'#5c8');
   if(d.b)applyBuff(d);
+  // V105: Mega dishes grant permanent stat boost
+  if(d.b==='mega'){
+    G.permBuffs.hp=(G.permBuffs.hp||0)+2;
+    G.player.maxHp+=2;G.player.hp+=2;
+    fT(W*.5,H*.35,'永久+2HP!','#fa0',16);
+    showMsg('高级料理! 永久生命+2!',90);
+    save();
+  }
 }
 function applyBuff(d){switch(d.b){case'str':G.player.tempStr=Math.min(MAX_STR_TEMP,G.player.tempStr+2);break;case'speed':G.player.maxE=Math.min(5,G.player.maxE+1);break;case'block':G.player.block+=5;break;case'mega':G.player.tempStr=Math.min(MAX_STR_TEMP,G.player.tempStr+3);break}}
 function canCookBossDish(){const bd=BOSS_DISH[G.bossDishKey];if(!bd)return false;for(const ing in bd.needs)if((G.ings.filter(i=>i===ing).length)<bd.needs[ing])return false;return true}
@@ -3279,7 +3312,7 @@ function drawHandUI(){
   const cw=Math.min(62,W/n-4),ch=Math.min(90,cw*1.45);
   const gap=4;const totalW=n*cw+(n-1)*gap;const sx=(W-totalW)/2;const cy=H-ch-8;
   G.hand.forEach((id,i)=>{
-    const c=CARDS[id];if(!c)return;
+    const c=getCardInfo(id);if(!c)return;
     const cx=sx+i*(cw+gap);const sel=G.sel===i;const hv=hitBtn(cx,cy,cw,ch);
     const up=sel?-12:(hv?-6:0);
     // V75: Q-cute card — warm rounded card with colored border
@@ -3426,34 +3459,62 @@ function rCook(t){
   dt(ing.n+' -> '+ing.dish.n,W/2,80,13,'#fa0','center','bold');
   dt('+'+ing.dish.h+'HP'+(ing.dish.b?(' ('+BUFF_NAMES[ing.dish.b]+')'):''),W/2,98,11,'#aaa');
 
-  // V96: Timing bar — dynamic zones based on cookware
+  // V105: Redesigned timing bar — bright, colorful, animated
   const cw=COOKWARE[G.cookware]||COOKWARE.none;
-  const barY=H*0.62,barW=Math.min(280,W-40),barX=(W-barW)/2,barH=22;
-  rr(barX,barY,barW,barH,4,'#1a1a1a','#555');
-  // Burn zone (outside good range)
+  const barY=H*0.60,barW=Math.min(300,W-30),barX=(W-barW)/2,barH=28;
+  // Background bar
+  rr(barX,barY,barW,barH,6,'#0a0a0a','#666');
+
+  // Zone colors — bright and distinct
   const burnL=cw.perfectMin-.2, burnR=cw.perfectMax+.2;
-  ctx.fillStyle='#4a1a1a';ctx.fillRect(barX+1,barY+1,barW*(burnL)-1,barH-2);
-  ctx.fillStyle='#4a1a1a';ctx.fillRect(barX+barW*(burnR),barY+1,barW*(1-burnR)-1,barH-2);
-  // Good zones
-  ctx.fillStyle='#3a3a1a';ctx.fillRect(barX+barW*burnL,barY+1,barW*(cw.perfectMin-burnL),barH-2);
-  ctx.fillStyle='#3a3a1a';ctx.fillRect(barX+barW*cw.perfectMax,barY+1,barW*(burnR-cw.perfectMax),barH-2);
-  // Perfect zone (center)
-  ctx.fillStyle='#1a3a1a';ctx.fillRect(barX+barW*cw.perfectMin,barY+1,barW*(cw.perfectMax-cw.perfectMin),barH-2);
-  dt('糊',barX+barW*.1,barY+15,9,'#f66');dt('OK',barX+barW*(burnL+(cw.perfectMin-burnL)/2),barY+15,9,'#cc6');
-  dt('完美',barX+barW*(cw.perfectMin+cw.perfectMax)/2,barY+15,9,'#6c6');dt('OK',barX+barW*(cw.perfectMax+(burnR-cw.perfectMax)/2),barY+15,9,'#cc6');dt('糊',barX+barW*.9,barY+15,9,'#f66');
-  // V96: Show current cookware name
-  dt('厨具: '+cw.n,W/2,barY-12,11,'#fc8','center','bold');
+  // Burn zones (red)
+  ctx.fillStyle='#5a2020';ctx.fillRect(barX+2,barY+2,barW*(burnL)-3,barH-4);
+  ctx.fillStyle='#5a2020';ctx.fillRect(barX+barW*burnR,barY+2,barW*(1-burnR)-2,barH-4);
+  // Good zones (yellow)
+  const gdL=ctx.createLinearGradient(barX+barW*burnL,0,barX+barW*cw.perfectMin,0);
+  gdL.addColorStop(0,'rgba(180,160,40,.6)');gdL.addColorStop(1,'rgba(120,200,60,.7)');
+  ctx.fillStyle=gdL;ctx.fillRect(barX+barW*burnL,barY+2,barW*(cw.perfectMin-burnL),barH-4);
+  const gdR=ctx.createLinearGradient(barX+barW*cw.perfectMax,0,barX+barW*burnR,0);
+  gdR.addColorStop(0,'rgba(120,200,60,.7)');gdR.addColorStop(1,'rgba(180,160,40,.6)');
+  ctx.fillStyle=gdR;ctx.fillRect(barX+barW*cw.perfectMax,barY+2,barW*(burnR-cw.perfectMax),barH-4);
+  // Perfect zone (bright green with glow)
+  const pg=ctx.createLinearGradient(barX+barW*cw.perfectMin,0,barX+barW*cw.perfectMax,0);
+  pg.addColorStop(0,'rgba(40,200,80,.85)');pg.addColorStop(.5,'rgba(80,255,120,.95)');pg.addColorStop(1,'rgba(40,200,80,.85)');
+  ctx.fillStyle=pg;ctx.fillRect(barX+barW*cw.perfectMin,barY+2,barW*(cw.perfectMax-cw.perfectMin),barH-4);
+
+  // Zone labels
+  dt('糊',barX+barW*.08,barY+barH/2+5,10,'#f88','center','bold');
+  dt('OK',barX+barW*(burnL+(cw.perfectMin-burnL)/2),barY+barH/2+5,9,'#cc8','center','bold');
+  dt('完美',barX+barW*(cw.perfectMin+cw.perfectMax)/2,barY+barH/2+5,11,'#fff','center','bold');
+  dt('OK',barX+barW*(cw.perfectMax+(burnR-cw.perfectMax)/2),barY+barH/2+5,9,'#cc8','center','bold');
+  dt('糊',barX+barW*.92,barY+barH/2+5,10,'#f88','center','bold');
+
+  // Cookware name
+  dt('厨具: '+cw.n,W/2,barY-14,11,'#fc8','center','bold');
 
   if(!G.cook.started){
-    dt('点击开始',W/2,barY+40,14,'#fa0','center','bold');
-    if(hitBtn(barX,barY+50,barW,36)&&mc){S.clk();G.cook.started=true}
+    dt('点击下方按钮开始',W/2,barY+44,13,'#fa0','center','bold');
+    if(btn(W/2-60,barY+52,120,40,'开始烹饪','#fa0')&&mc){S.clk();G.cook.started=true}
   }else if(!G.cook.ready){
     G.cook.ptr+=G.cook.dir*G.cook.spd;
     if(G.cook.ptr>=1){G.cook.ptr=1;G.cook.dir=-1}if(G.cook.ptr<=0){G.cook.ptr=0;G.cook.dir=1}
+    // V105: Bright animated pointer — glowing arrow with trail
     const px=barX+G.cook.ptr*barW;
-    ctx.fillStyle='#fff';ctx.fillRect(px-2,barY-4,4,barH+8);
-    if(hitBtn(W/2-55,barY+50,110,38)&&mc){S.clk();G.cook.ready=true;finishCook()}
-    rr(W/2-55,barY+50,110,38,6,'#3a2a0a','#fa0');dt('停止!',W/2,barY+74,18,'#fa0','center','bold');
+    // Glow halo
+    const ptrGlow=ctx.createRadialGradient(px,barY+barH/2,0,px,barY+barH/2,18);
+    ptrGlow.addColorStop(0,'rgba(255,255,255,.8)');
+    ptrGlow.addColorStop(.5,'rgba(255,255,200,.3)');
+    ptrGlow.addColorStop(1,'rgba(255,255,0,0)');
+    ctx.fillStyle=ptrGlow;ctx.fillRect(px-20,barY-6,40,barH+12);
+    // Pointer body — thick white bar with gold edge
+    ctx.fillStyle='#fff';ctx.fillRect(px-3,barY-6,6,barH+12);
+    ctx.fillStyle='#fc4';ctx.fillRect(px-4,barY-6,2,barH+12);ctx.fillRect(px+2,barY-6,2,barH+12);
+    // Triangle indicator on top
+    ctx.fillStyle='#fc4';ctx.beginPath();ctx.moveTo(px-7,barY-6);ctx.lineTo(px+7,barY-6);ctx.lineTo(px,barY-14);ctx.closePath();ctx.fill();
+    // Triangle indicator on bottom
+    ctx.fillStyle='#fc4';ctx.beginPath();ctx.moveTo(px-7,barY+barH+6);ctx.lineTo(px+7,barY+barH+6);ctx.lineTo(px,barY+barH+14);ctx.closePath();ctx.fill();
+    // Stop button
+    if(btn(W/2-60,barY+52,120,40,'停止!','#f44')&&mc){S.clk();G.cook.ready=true;finishCook()}
   }
 
   if(G.seasons.length>0&&!G.cook.ready){
@@ -3610,6 +3671,70 @@ function rShop(t){
       }
     }
   });
+
+  // V105: Card upgrade section — merge 2 same cards + gold → upgraded card
+  const upgY=yStart+sh.items.length*52+8;
+  ctx.strokeStyle='rgba(200,170,80,.4)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(20,upgY);ctx.lineTo(W-20,upgY);ctx.stroke();
+  dt('--- 卡牌强化 ---',W/2,upgY+16,12,'#fc4','center','bold');
+  dt('消耗2张相同卡+金币升级(至多+3)',W/2,upgY+32,9,'#886','center');
+
+  // Find upgradeable cards in deck (group by base+lv)
+  const upgList=[];
+  const deckCounts={};
+  G.runDeck.forEach(id=>{
+    const p=parseCardId(id);
+    if(!UPGRADEABLE.includes(p.base))return;
+    if(p.lv>=3)return; // max +3
+    const key=p.base+'+'+p.lv;
+    deckCounts[key]=(deckCounts[key]||0)+1;
+  });
+  for(const key in deckCounts){
+    if(deckCounts[key]>=2){
+      const parts=key.split('+');
+      const base=parts[0],lv=parseInt(parts[1]);
+      const ci=getCardInfo(key);
+      const cost=UPGRADE_COST[lv];
+      upgList.push({base,lv,cost,key,ci});
+    }
+  }
+
+  if(upgList.length===0){
+    dt('没有可强化的卡牌',W/2,upgY+52,11,'#666','center');
+    dt('(需要2张相同的卡)',W/2,upgY+68,9,'#554','center');
+  }else{
+    upgList.forEach((u,i)=>{
+      const uy=upgY+48+i*56;
+      const hv=hitBtn(20,uy,W-40,48);
+      const canAfford=G.player.gold>=u.cost;
+      const nextLv=u.lv+1;
+      const nextCi=getCardInfo(u.base+'+'+nextLv);
+      rr(20,uy,W-40,48,8,hv?'rgba(45,35,20,.9)':'rgba(28,20,14,.85)',hv?_uiBdrHi:_uiBdr);
+      // Current card name → upgraded card name
+      dt(u.ci.n+' x2 → '+nextCi.n,30,uy+18,12,canAfford?'#fc4':'#886','left','bold');
+      // Show stat change
+      const oldV=u.ci.v,newV=nextCi.v;
+      dt(u.ci.t==='atk'?(oldV+'→'+newV+'伤害'):(oldV+'→'+newV+'护甲'),30,uy+36,10,'#aaa','left');
+      dt(u.cost+'金',W-60,uy+18,12,canAfford?'#fa0':'#f44','right','bold');
+      dt('费用',W-60,uy+36,9,'#666','right');
+      if(hv&&mc&&canAfford){
+        mc=false;S.clk();
+        // Remove 2 source cards from deck, add 1 upgraded card
+        let removed=0;
+        for(let di=G.runDeck.length-1;di>=0&&removed<2;di--){
+          if(parseCardId(G.runDeck[di]).base===u.base&&parseCardId(G.runDeck[di]).lv===u.lv){
+            G.runDeck.splice(di,1);removed++;
+          }
+        }
+        if(removed===2){
+          G.runDeck.push(u.base+'+'+nextLv);
+          G.player.gold-=u.cost;
+          showMsg('强化成功! '+nextCi.n,90);
+        }
+      }
+    });
+  }
+
   if(btn(W/2-60,H*.86,120,40,'离开商城','#888')&&mc){S.clk();G.state='explore';G.shopNear=true; // V103: keep shopNear=true so standing in shop area doesn't re-trigger
     // Push player away from shop to prevent immediate re-entry
     for(const sh of G.mapShops){
